@@ -1,0 +1,34 @@
+<?php
+
+/**
+ * @file
+ * Media Attributes Manager module.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\OpenModalDialogCommand;
+use Drupal\Core\Ajax\CloseModalDialogCommand;
+use Drupal\Core\Ajax\AlertCommand; // Optionnel, pour les erreurs
+
+function media_attributes_manager_theme($existing, $type, $theme, $path) {
+  return [
+    'media_attributes_manager_items' => [
+      'variables' => ['items' => []],
+      'template' => 'media-attributes-manager-items',
+    ],
+    'media_attributes_manager_item' => [
+      'variables' => [
+        'datas' => [],
+        'buttons' => [],
+        'attributes' => [],
+      ],
+      'template' => 'media-attributes-manager-item',
+    ],
+    'media_attributes_widget_actions' => [
+      'render element' => 'buttons',
+      'template' => 'media-attributes-widget-actions',
+    ],
+  ];
+}
+

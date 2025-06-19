@@ -1,0 +1,72 @@
+widget:
+  js:
+    js/media-attributes-widget.js: {}
+  css:
+    theme:
+      css/media-attributes-widget.css: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/drupalSettings
+    - core/drupal.dialog.ajax
+    - core/drupal.ajax
+    - core/drupal.once
+
+
+selection:
+  js:
+    js/media-attributes-selection.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+
+sortable:
+  version: 1.x
+  js:
+    js/Sortable.js: {}
+    js/media-attributes-sortable.js: {}
+  dependencies:
+    - core/jquery
+    - core/once
+    - core/drupal
+    - entity_browser/entity_browser.entity_reference
+
+bulk_edit_modal:
+  js:
+    js/bulk-edit-modal.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/autocomplete
+    - core/drupal.dialog
+    - core/once
+
+bulk_edit_autocomplete_fix:
+  js:
+    js/bulk-edit-autocomplete-fix.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/autocomplete
+    - core/once
+
+bulk_edit_handler:
+  js:
+    js/bulk-edit-handler.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/drupal.ajax
+    - core/once
+    - core/jquery.ui.autocomplete
+    - core/drupal.dialog
+
+bulk_edit_form_submit:
+  js:
+    js/bulk-edit-form-submit.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/drupal.message
+    - core/once

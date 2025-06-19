@@ -1,0 +1,15 @@
+{# {{ dump() }} #}
+<div class="media-library-item__actions">
+  {{ buttons.select_checkbox }}
+  <div class="media-library-item__buttons">
+  {% if buttons.replace_button %}
+    {{ buttons.replace_button }}
+{% endif %}
+  {% if buttons.edit_button %}
+    {{ buttons.edit_button }}
+{% endif %}
+   {% if buttons.remove_button %}
+    {{ buttons.remove_button }}
+{% endif %}
+  </div>
+</div>

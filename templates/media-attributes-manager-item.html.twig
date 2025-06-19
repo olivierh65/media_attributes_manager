@@ -1,0 +1,57 @@
+{#
+  Template for displaying a media item in the Media Attributes Manager.
+  This template is used to render each media item with its attributes and actions.
+#}
+{# {{ dump() }} #}
+
+<div{{ attributes }}>
+  <div class="media-library-item media-attributes-item">
+    <div class="media-library-item__image"
+         data-media-id="{{ datas.media_id }}"
+         data-media-type="{{ datas.media_base_type }}"
+         data-media-title="{{ datas.media_title }}"
+         data-media-alt="{{ datas.media_alt }}"
+         data-media-thumbnail-width="{{ datas.media_thumbnail_width }}"
+         data-media-thumbnail-height="{{ datas.media_thumbnail_height }}"
+         data-media-video-url="{{ datas.media_video_url }}">
+      {# Affichage du titre et de l'ID du média #}
+      {# Affichage du média #}
+      {% if datas.media_base_type == 'image' and (datas.media_thumbnail_url or datas.media_url) %}
+        <img
+          {% if datas.media_thumbnail_url %}
+          src="{{ datas.media_thumbnail_url }}"
+          {% else %}
+          src="{{ datas.media_url }}"
+          {% endif %}
+          width="{{ datas.media_thumbnail_width }}"
+          height="{{ datas.media_thumbnail_height }}"
+          alt="{{ datas.media_thumbnail_alt }}"
+          title="{{ datas.media_thumbnail_title }}"
+        >
+      {% elseif datas.media_base_type == 'video_file' and ( datas.media_video_url or datas.media_url or datas_media.thumbnail_url) %}
+        <video controls {#
+          width="{{ datas.media_thumbnail_width|default(220) }}"
+          height="{{ datas.media_thumbnail_height|default(220) }}" #}
+        >
+        {% if datas.media_video_url %}
+          <source src="{{ datas.media_video_url }}" type="video/mp4">
+        {% elseif datas.media_url %}
+          <source src="{{ datas.media_url }}" type="video/mp4">
+        {% endif %}
+        </video>
+        {#
+        {% if datas.media_thumbnail_url %}
+          <img src="{{ datas.media_thumbnail_url }}" alt="{{ datas.media_thumbnail_alt }}">
+        {% endif %}
+        #}
+      {% endif %}
+      {{ datas.media_url }}
+    </div>
+    {# Affichage des actions (checkbox, boutons) #}
+    {% if buttons is defined %}
+  <div class="media-attributes-actions-overlay">
+    {{ buttons|render }}
+  </div>
+{% endif %}
+  </div>
+</div>

@@ -1,0 +1,15 @@
+media_attributes_manager.bulk_edit_modal:
+  path: '/media-attributes/bulk-edit-modal'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\BulkEditModalController::modal'
+    _title: 'Bulk Edit Media Attributes'
+  requirements:
+    _permission: 'administer media'
+
+media_attributes_manager.bulk_edit_submit:
+  path: '/media-attributes/bulk-edit/submit'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\BulkEditModalController::submitForm'
+    _title: 'Bulk Edit Submit'
+  requirements:
+    _permission: 'administer media'
