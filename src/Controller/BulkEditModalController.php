@@ -163,6 +163,23 @@ class BulkEditModalController extends ControllerBase {
             }
 
             if ($processed_count > 0) {
+                // Invalider les caches des médias modifiés pour forcer le rafraîchissement du rendu
+                $cache_tags = [];
+                foreach ($media_types as $media_bundle => $bundle_data) {
+                    if (!empty($bundle_data['ids']) && is_array($bundle_data['ids'])) {
+                        foreach ($bundle_data['ids'] as $media_id) {
+                            $cache_tags[] = 'media:' . $media_id;
+                        }
+                    }
+                }
+
+                if (!empty($cache_tags)) {
+                    \Drupal::logger('media_attributes_manager')->debug('Invalidation des cache tags: @tags', [
+                        '@tags' => implode(', ', $cache_tags)
+                    ]);
+                    \Drupal::service('cache_tags.invalidator')->invalidateTags($cache_tags);
+                }
+
                 $message = $this->formatPlural(
                     $processed_count,
                     '1 media item updated successfully.',
@@ -171,6 +188,153 @@ class BulkEditModalController extends ControllerBase {
 
                 \Drupal::messenger()->addStatus($message);
                 $response->addCommand(new \Drupal\Core\Ajax\MessageCommand($message, NULL, ['type' => 'status']));
+
+                // Préparer les données des médias mis à jour pour rafraîchir les tooltips
+                $updated_media_data = [];
+                $media_storage = \Drupal::entityTypeManager()->getStorage('media');
+
+                // Utiliser la classe helper pour récupérer les champs personnalisés complets
+                $custom_fields_helper = new \Drupal\media_attributes_manager\CustomFieldsTraitHelper();
+
+                foreach ($media_types as $media_bundle => $bundle_data) {
+                    if (!empty($bundle_data['ids']) && is_array($bundle_data['ids']) &&
+                        isset($bundle_data['fields']) && is_array($bundle_data['fields'])) {
+
+                        foreach ($bundle_data['ids'] as $media_id) {
+                            // Charger l'entité média pour obtenir ses données complètes à jour
+                            $media = $media_storage->load($media_id);
+
+                            if ($media) {
+                                // Récupérer tous les champs personnalisés pour ce média à l'aide du helper
+                                $custom_values = $custom_fields_helper->getCustomFieldValues($media);
+                                $full_fields = [];
+
+                                // Ajouter tous les champs personnalisés actuels
+                                foreach ($custom_values as $field_name => $field_value) {
+                                    $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
+
+                                    // Formater les valeurs pour un affichage cohérent
+                                    if (is_array($field_value) && !empty($field_value)) {
+                                        $full_fields[$safe_field_name] = implode(', ', $field_value);
+                                    }
+                                    else if ($field_value === NULL) {
+                                        $full_fields[$safe_field_name] = '';
+                                    }
+                                    else if (is_bool($field_value)) {
+                                        $full_fields[$safe_field_name] = $field_value ? 'Oui' : 'Non';
+                                    }
+                                    else {
+                                        $full_fields[$safe_field_name] = $field_value;
+                                    }
+                                }
+
+                                // Récupérer les définitions de champs pour obtenir les labels
+                                $custom_fields = $custom_fields_helper->getCustomFields($media);
+                                foreach ($custom_fields as $field_name => $definition) {
+                                    $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
+                                    $full_fields[$safe_field_name . '_label'] = $definition->getLabel();
+                                }
+
+                                // Fusionner avec les champs qui ont été modifiés pour tenir compte des dernières modifications
+                                foreach ($bundle_data['fields'] as $field_name => $field_value) {
+                                    // Ne pas inclure les champs de clearing ou les champs TID auxiliaires
+                                    if (strpos($field_name, '_clear') === false && strpos($field_name, '_tid') === false) {
+                                        $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
+
+                                        // Formater les valeurs pour un affichage cohérent
+                                        if (is_array($field_value) && !empty($field_value)) {
+                                            $full_fields[$safe_field_name] = implode(', ', $field_value);
+                                        }
+                                        else if ($field_value === NULL) {
+                                            $full_fields[$safe_field_name] = '';
+                                        }
+                                        else if (is_bool($field_value)) {
+                                            $full_fields[$safe_field_name] = $field_value ? 'Oui' : 'Non';
+                                        }
+                                        else {
+                                            $full_fields[$safe_field_name] = $field_value;
+                                        }
+                                    }
+                                }
+
+                                // Logger les champs mis à jour pour ce média
+                                \Drupal::logger('media_attributes_manager')->debug('Tooltip update pour le média @id: @fields', [
+                                    '@id' => $media_id,
+                                    '@fields' => implode(', ', array_keys($full_fields))
+                                ]);
+
+                                $updated_media_data[] = [
+                                    'id' => $media_id,
+                                    'bundle' => $media_bundle,
+                                    'fields' => $full_fields
+                                ];
+                            }
+                        }
+                    }
+                }
+
+                // Déclencher l'événement JS pour mettre à jour les tooltips
+                if (!empty($updated_media_data)) {
+                    $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                        NULL,
+                        'trigger',
+                        ['mediaAttributesUpdated', $updated_media_data]
+                    ));
+
+                    // Ajouter une commande AJAX pour forcer le rechargement des éléments du formulaire
+                    foreach ($updated_media_data as $media_item) {
+                        $selector = '[data-entity-id="media:' . $media_item['id'] . '"]';
+                        $tooltip_selector = $selector . ' .media-item-with-tooltip';
+                        
+                        // Ajouter une classe temporaire pour indiquer que l'élément a été mis à jour
+                        $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                            $selector,
+                            'addClass',
+                            ['media-updated']
+                        ));
+                        
+                        // Forcer la mise à jour des attributs data-* avec les nouvelles valeurs
+                        $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                            $tooltip_selector,
+                            'attr',
+                            ['data-force-update', (new \DateTime())->format('U')]
+                        ));
+                        
+                        // Mettre à jour chaque attribut data-media-attr-* avec les nouvelles valeurs
+                        if (!empty($media_item['fields'])) {
+                            foreach ($media_item['fields'] as $field_name => $field_value) {
+                                if (strpos($field_name, '_label') === false) {
+                                    // Mettre à jour la valeur de l'attribut
+                                    $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                                        $tooltip_selector,
+                                        'attr',
+                                        ['data-media-attr-' . $field_name, $field_value]
+                                    ));
+                                    
+                                    // Mettre à jour le label si disponible
+                                    if (!empty($media_item['fields'][$field_name . '_label'])) {
+                                        $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                                            $tooltip_selector,
+                                            'attr',
+                                            ['data-media-label-' . $field_name, $media_item['fields'][$field_name . '_label']]
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Ajouter une commande pour recharger les éléments mis à jour via AJAX
+                    $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
+                        NULL,
+                        'refreshMediaItems',
+                        [array_keys($media_types)]
+                    ));
+
+                    \Drupal::logger('media_attributes_manager')->debug('Envoi des données de mise à jour pour @count médias', [
+                        '@count' => count($updated_media_data)
+                    ]);
+                }
             } else {
                 $message = $this->t('No media items were updated. Please check your selection.');
                 \Drupal::messenger()->addWarning($message);
@@ -341,10 +505,10 @@ class BulkEditModalController extends ControllerBase {
                                         '@key' => $key,
                                         '@val' => $val
                                     ]);
-                                    
+
                                     // Chercher tous les champs potentiels contenant un ID de terme
                                     if (strpos($key, $field_name) !== false && (
-                                        strpos($key, '_tid') !== false || 
+                                        strpos($key, '_tid') !== false ||
                                         strpos($key, 'taxonomy_term_id') !== false)) {
                                         \Drupal::logger('media_attributes_manager')->debug('  Champ potentiel d\'ID trouvé: @key = @val', [
                                             '@key' => $key,
@@ -362,7 +526,7 @@ class BulkEditModalController extends ControllerBase {
                                         '@term_id' => $term_id,
                                         '@field' => $field_name
                                     ]);
-                                } 
+                                }
                                 // Vérifier ensuite le format alternatif pour le champ caché
                                 else {
                                     // Format alternatif: taxonomy_term_id_BUNDLE_FIELDNAME

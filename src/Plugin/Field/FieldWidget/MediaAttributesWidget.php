@@ -12,6 +12,7 @@ use Drupal\Core\Field\FieldWidget;
 use Drupal\Core\Render\Element;
 use Drupal\image\Entity\ImageStyle;
 use Drupal\Core\File\FileUrlGenerator;
+use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
 
 /**
  * Plugin implementation of the 'media_attributes_widget' widget.
@@ -27,6 +28,7 @@ use Drupal\Core\File\FileUrlGenerator;
  */
 
 class MediaAttributesWidget extends EntityReferenceBrowserWidget {
+  use CustomFieldsTrait;
 
   protected $field_definition;
 
@@ -99,6 +101,28 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 'type' => $definition->getType(),
                 'value' => $value,
               ];
+              
+              // Ajoute également les valeurs comme attributs data pour le tooltip
+              // Adaptez la clé pour qu'elle soit utilisable comme attribut HTML
+              $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
+              
+              // Format et convertit la valeur pour un attribut HTML
+              $attr_value = $value;
+              if (is_array($value)) {
+                $attr_value = implode(', ', $value);
+              }
+              elseif (is_bool($value)) {
+                $attr_value = $value ? 'true' : 'false';
+              }
+              
+              // Limite la longueur pour éviter des attributs trop grands
+              $attr_value = is_scalar($attr_value) ? substr((string) $attr_value, 0, 255) : '';
+              
+              // Ajoute l'attribut data-*
+              $element['current']['items'][$item_key]['#attributes']['data-media-attr-' . $safe_field_name] = (string) $attr_value;
+              
+              // Ajoute également l'étiquette du champ 
+              $element['current']['items'][$item_key]['#attributes']['data-media-label-' . $safe_field_name] = (string) $definition->getLabel();
             }
           }
         }
@@ -328,6 +352,52 @@ $element['#attached']['library'][] = 'core/jquery.form';
         $video_field = $this->getImageFieldName($media, 'video');
 
         // Initialise les données à afficher
+        // Récupérer TOUS les champs personnalisés et leurs valeurs via le trait
+        $custom_fields = $this->getCustomFields($media);
+        $custom_values = $this->getCustomFieldValues($media);
+        
+        // Préparer les données pour le template, en incluant tous les champs disponibles
+        $values_for_tooltip = [];
+        foreach ($custom_fields as $field_name => $definition) {
+          if (isset($custom_values[$field_name])) {
+            // Format spécifique pour le tooltip
+            $value = $custom_values[$field_name];
+            // Gère les cas spéciaux pour l'affichage
+            if (is_array($value) && !empty($value)) {
+              // Pour les références d'entités (ex: taxonomie), on affiche les labels
+              $value = implode(', ', $value);
+            }
+            else if ($value === NULL) {
+              $value = '';
+            }
+            else if (is_bool($value)) {
+              $value = $value ? 'Oui' : 'Non';
+            }
+            
+            $values_for_tooltip[$field_name] = [
+              'label' => $definition->getLabel(),
+              'type' => $definition->getType(),
+              'value' => $value,
+              'machine_name' => $field_name,
+            ];
+          }
+        }
+        
+        // Fusionner avec toutes les autres valeurs déjà présentes
+        if (isset($item['#values']) && is_array($item['#values'])) {
+          foreach ($item['#values'] as $field_name => $field_data) {
+            if (!isset($values_for_tooltip[$field_name])) {
+              $values_for_tooltip[$field_name] = $field_data;
+            }
+          }
+        }
+        
+        // Log de débogage pour vérifier les valeurs disponibles
+        \Drupal::logger('media_attributes_manager')->debug('Champs personnalisés pour le média @id: @fields', [
+          '@id' => $media->id(), 
+          '@fields' => print_r(array_keys($values_for_tooltip), TRUE)
+        ]);
+        
         $datas = [
           'media_id' => $media->id(),
           'media_url' => $media->toUrl()->toString(),
@@ -340,6 +410,9 @@ $element['#attached']['library'][] = 'core/jquery.form';
           'media_thumbnail_width' => $width,
           'media_thumbnail_height' => $height,
           'media_video_url' => '',
+          'media_title' => $media->label(),
+          // Inclure toutes les valeurs des champs personnalisés pour le tooltip
+          'values' => $values_for_tooltip,
         ];
 
         // Si c'est une image, on récupère la vignette

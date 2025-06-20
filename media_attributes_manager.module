@@ -41,7 +41,35 @@ function media_attributes_manager_form_alter(&$form, FormStateInterface $form_st
   if ($form_id === 'media_attributes_bulk_edit_form') {
     // Ajouter une fonction post-construction pour s'assurer que tous les attributs data nécessaires sont présents
     $form['#after_build'][] = 'media_attributes_manager_form_after_build';
+    
+    // Invalider tous les caches pertinents pour forcer un rendu frais
+    media_attributes_manager_invalidate_render_cache();
   }
+  
+  // S'applique à tous les formulaires qui contiennent potentiellement notre widget
+  if (strpos($form_id, 'node_') === 0 || strpos($form_id, 'paragraph_') === 0 || strpos($form_id, 'media_') === 0) {
+    // Ajouter notre bibliothèque de rafraîchissement
+    $form['#attached']['library'][] = 'media_attributes_manager/media_attributes_refresh';
+  }
+}
+
+/**
+ * Fonction utilitaire pour invalider tous les caches de rendu pertinents.
+ *
+ * Cette fonction est appelée après les opérations d'édition en masse pour
+ * s'assurer que les changements sont immédiatement visibles.
+ */
+function media_attributes_manager_invalidate_render_cache() {
+  // Invalider les caches de tags liés aux médias
+  \Drupal::service('cache_tags.invalidator')->invalidateTags(['media_list', 'rendered']);
+  
+  // Vider les caches de rendu spécifiques
+  $bins = ['render', 'dynamic_page_cache', 'page'];
+  foreach ($bins as $bin) {
+    \Drupal::cache($bin)->invalidateAll();
+  }
+  
+  \Drupal::logger('media_attributes_manager')->debug('Tous les caches de rendu ont été invalidés pour garantir un affichage à jour des médias.');
 }
 
 /**

@@ -1,9 +1,11 @@
 widget:
   js:
     js/media-attributes-widget.js: {}
+    js/media-attributes-tooltip.js: {}
   css:
     theme:
       css/media-attributes-widget.css: {}
+      css/media-attributes-tooltip.css: {}
   dependencies:
     - core/drupal
     - core/jquery
@@ -11,6 +13,7 @@ widget:
     - core/drupal.dialog.ajax
     - core/drupal.ajax
     - core/drupal.once
+    - media_attributes_manager/media_attributes_refresh
 
 
 selection:
@@ -96,6 +99,21 @@ taxonomy_term_handler:
   js:
     js/taxonomy-term-handler.js: {}
   dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+
+media_attributes_refresh:
+  js:
+    js/media-attributes-refresh.js: {}
+  css:
+    theme:
+      css/media-attributes-refresh.css: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+    - core/drupal.ajax
     - core/drupal
     - core/jquery
     - core/once

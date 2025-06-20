@@ -2,11 +2,37 @@
   Template for displaying a media item in the Media Attributes Manager.
   This template is used to render each media item with its attributes and actions.
 #}
+{# Debug: pour voir toutes les variables disponibles #}
 {# {{ dump() }} #}
+
+{# Stockons d'abord tous les attributs personnalisés dans des variables structurées pour le tooltip #}
+{% set custom_attributes = {} %}
+{% set field_labels = {} %}
+{% set field_values = {} %}
+
+{# Parcourir tous les attributs pour extraire les données média #}
+{% for key, value in attributes %}
+  {% if key starts with 'data-media-attr-' %}
+    {% set field_name = key|replace({'data-media-attr-': ''}) %}
+    {% set field_values = field_values|merge({(field_name): value}) %}
+    {% set custom_attributes = custom_attributes|merge({(key): value}) %}
+  {% endif %}
+  {% if key starts with 'data-media-label-' %}
+    {% set field_name = key|replace({'data-media-label-': ''}) %}
+    {% set field_labels = field_labels|merge({(field_name): value}) %}
+    {% set custom_attributes = custom_attributes|merge({(key): value}) %}
+  {% endif %}
+{% endfor %}
+
+{# Log des champs disponibles pour le débogage #}
+{# Décommenter pour déboguer 
+{% set log_message = 'Champs disponibles pour le média ' ~ datas.media_id ~ ': ' ~ field_values|keys|join(', ') %}
+{{ drupal_message(log_message, 'debug') }}
+#}
 
 <div{{ attributes }}>
   <div class="media-library-item media-attributes-item">
-    <div class="media-library-item__image"
+    <div class="media-library-item__image media-item-with-tooltip"
          data-media-id="{{ datas.media_id }}"
          data-media-type="{{ datas.media_base_type }}"
          data-media-title="{{ datas.media_title }}"
@@ -46,6 +72,56 @@
         #}
       {% endif %}
       {{ datas.media_url }}
+
+      {# Tooltip pour afficher les attributs personnalisés du média #}
+      {# Tooltip pour afficher les attributs personnalisés du média #}
+      <div class="media-custom-attributes-tooltip">
+        <div class="media-tooltip-header">{{ datas.media_title }}</div>
+        <div class="media-tooltip-content">
+          {% set displayed_fields = [] %}
+          
+          {# 1. D'abord afficher les champs à partir de datas.values (valeurs directes du média) #}
+          {% if datas.values is defined and datas.values is not empty %}
+            {% for key, field_info in datas.values %}
+              {% set field_name = field_info.machine_name|default(key) %}
+              {% set displayed_fields = displayed_fields|merge([field_name]) %}
+              
+              <div class="media-tooltip-attribute" data-field-name="{{ field_name }}">
+                <span class="media-tooltip-label">{{ field_info.label|default(field_name|capitalize) }}:</span>
+                <span class="media-tooltip-value">
+                  {% if field_info.value is iterable and field_info.value is not empty %}
+                    {{ field_info.value|join(', ') }}
+                  {% elseif field_info.value is not empty %}
+                    {{ field_info.value }}
+                  {% else %}
+                    <i>Non défini</i>
+                  {% endif %}
+                </span>
+              </div>
+            {% endfor %}
+          {% endif %}
+          
+          {# 2. Ensuite compléter avec les attributs extraits des data-* #}
+          {% for field_name, value in field_values %}
+            {% if value is not empty and field_name not in displayed_fields %}
+              {% set displayed_fields = displayed_fields|merge([field_name]) %}
+              <div class="media-tooltip-attribute" data-field-name="{{ field_name }}">
+                <span class="media-tooltip-label">{{ field_labels[field_name]|default(field_name|capitalize|replace({'_': ' '})) }}:</span>
+                <span class="media-tooltip-value">{{ value }}</span>
+              </div>
+            {% endif %}
+          {% endfor %}
+          
+          {# 3. Cas où il n'y aurait aucun champ à afficher - message informatif #}
+          {% if displayed_fields is empty %}
+            <div class="media-tooltip-attribute">
+              <i>Aucun attribut personnalisé disponible</i>
+            </div>
+          {% endif %}
+          
+          {# Supprimer les données de débogage #}
+        </div>
+      </div>
     </div>
     {# Affichage des actions (checkbox, boutons) #}
     {% if buttons is defined %}
