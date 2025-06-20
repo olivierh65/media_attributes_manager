@@ -71,6 +71,68 @@ class BulkEditModalController extends ControllerBase {
                 '@data' => json_encode($entities_data, JSON_PRETTY_PRINT)
             ]);
 
+            // Journal détaillé pour chaque champ
+            \Drupal::logger('media_attributes_manager')->debug('Analyse complète des données reçues:');
+            foreach ($entities_data['media']['types'] as $bundle => $bundle_data) {
+                \Drupal::logger('media_attributes_manager')->debug('Bundle: @bundle, IDs: @ids', [
+                    '@bundle' => $bundle,
+                    '@ids' => implode(', ', $bundle_data['ids'] ?? [])
+                ]);
+
+                if (!empty($bundle_data['fields'])) {
+                    foreach ($bundle_data['fields'] as $field_name => $value) {
+                        \Drupal::logger('media_attributes_manager')->debug('  Champ: @field, Valeur: @value, Type: @type', [
+                            '@field' => $field_name,
+                            '@value' => is_bool($value) ? ($value ? 'true' : 'false') : (string) $value,
+                            '@type' => gettype($value)
+                        ]);
+
+                        // Vérification spécifique pour les champs TID
+                        if (strpos($field_name, '_tid') !== false) {
+                            $parent_field = str_replace('_tid', '', $field_name);
+                            \Drupal::logger('media_attributes_manager')->debug('  --> Ce champ est un ID taxonomique pour: @parent_field', [
+                                '@parent_field' => $parent_field
+                            ]);
+                        }
+                    }
+                } else {
+                    \Drupal::logger('media_attributes_manager')->debug('  Aucun champ trouvé pour ce bundle');
+                }
+            }
+
+            // Journal détaillé pour les valeurs de taxonomie
+            foreach ($entities_data['media']['types'] as $bundle => $bundle_data) {
+                if (!empty($bundle_data['fields'])) {
+                    foreach ($bundle_data['fields'] as $field_name => $value) {
+                        // Vérifier si c'est un champ de taxonomie potentiel
+                        if (strpos($field_name, 'field_') === 0 && !strpos($field_name, '_clear') && !strpos($field_name, '_tid')) {
+                            // Vérifier si nous avons un champ _tid correspondant
+                            $tid_field = $field_name . '_tid';
+                            if (isset($bundle_data['fields'][$tid_field])) {
+                                \Drupal::logger('media_attributes_manager')->debug('Champ taxonomie trouvé: @field, Valeur: @value, TID: @tid', [
+                                    '@field' => $field_name,
+                                    '@value' => $value,
+                                    '@tid' => $bundle_data['fields'][$tid_field]
+                                ]);
+
+                                // Remplacer la valeur par l'ID du terme
+                                if (!empty($bundle_data['fields'][$tid_field])) {
+                                    $entities_data['media']['types'][$bundle]['fields'][$field_name] = $bundle_data['fields'][$tid_field];
+                                    \Drupal::logger('media_attributes_manager')->debug('Valeur remplacée par l\'ID du terme: @tid', [
+                                        '@tid' => $bundle_data['fields'][$tid_field]
+                                    ]);
+                                }
+                            } else {
+                                \Drupal::logger('media_attributes_manager')->debug('Champ potentiel de taxonomie sans TID associé: @field, Valeur: @value', [
+                                    '@field' => $field_name,
+                                    '@value' => $value
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Vérifier la structure des données
             if (empty($entities_data['media']['types']) || !is_array($entities_data['media']['types'])) {
                 throw new \InvalidArgumentException('Invalid data structure: missing or invalid media types');
@@ -240,9 +302,125 @@ class BulkEditModalController extends ControllerBase {
                             $media->{$field_name} = NULL;
                             $updated = TRUE;
                         } elseif (!empty($value)) {
-                            // Mettre à jour avec la nouvelle valeur
-                            $media->{$field_name} = $value;
-                            $updated = TRUE;
+                            // Déterminer le type de champ
+                            try {
+                                $field_definitions = \Drupal::service('entity_field.manager')->getFieldDefinitions('media', $media->bundle());
+                                if (isset($field_definitions[$field_name])) {
+                                    $field_definition = $field_definitions[$field_name];
+                                    $field_type = $field_definition->getType();
+                                    $target_type = ($field_type === 'entity_reference') ?
+                                        $field_definition->getFieldStorageDefinition()->getSetting('target_type') : NULL;
+                                } else {
+                                    // Si la définition n'est pas trouvée, continuer sans traitement spécial
+                                    $field_type = NULL;
+                                    $target_type = NULL;
+                                }
+                            } catch (\Exception $e) {
+                                // En cas d'erreur, continuer sans traitement spécial
+                                \Drupal::logger('media_attributes_manager')->warning('Error getting field definition for @field: @error', [
+                                    '@field' => $field_name,
+                                    '@error' => $e->getMessage()
+                                ]);
+                                $field_type = NULL;
+                                $target_type = NULL;
+                            }
+
+                            if ($field_type === 'entity_reference' && $target_type === 'taxonomy_term') {
+                                // D'abord vérifier si un champ caché avec l'ID est disponible
+                                $tid_field_name = $field_name . '_tid';
+                                $term_id = NULL;
+
+                                \Drupal::logger('media_attributes_manager')->debug('Recherche du champ d\'ID caché @tid_field pour @field', [
+                                    '@tid_field' => $tid_field_name,
+                                    '@field' => $field_name
+                                ]);
+
+                                // Vérifier tous les champs pour trouver le champ d'ID caché
+                                foreach ($fields as $key => $val) {
+                                    \Drupal::logger('media_attributes_manager')->debug('  Examen du champ @key = @val', [
+                                        '@key' => $key,
+                                        '@val' => $val
+                                    ]);
+                                    
+                                    // Chercher tous les champs potentiels contenant un ID de terme
+                                    if (strpos($key, $field_name) !== false && (
+                                        strpos($key, '_tid') !== false || 
+                                        strpos($key, 'taxonomy_term_id') !== false)) {
+                                        \Drupal::logger('media_attributes_manager')->debug('  Champ potentiel d\'ID trouvé: @key = @val', [
+                                            '@key' => $key,
+                                            '@val' => $val
+                                        ]);
+                                    }
+                                }
+
+                                // Vérifier d'abord le format standard _tid
+                                if (isset($fields[$tid_field_name]) && !empty($fields[$tid_field_name])) {
+                                    // Utiliser l'ID du champ caché s'il existe
+                                    $term_id = $fields[$tid_field_name];
+                                    \Drupal::logger('media_attributes_manager')->debug('Found hidden term ID field @tid_field with value @term_id for field @field', [
+                                        '@tid_field' => $tid_field_name,
+                                        '@term_id' => $term_id,
+                                        '@field' => $field_name
+                                    ]);
+                                } 
+                                // Vérifier ensuite le format alternatif pour le champ caché
+                                else {
+                                    // Format alternatif: taxonomy_term_id_BUNDLE_FIELDNAME
+                                    $simple_hidden_name = 'taxonomy_term_id_' . $media_bundle . '_' . str_replace(['[', ']'], '_', $field_name);
+                                    if (isset($fields[$simple_hidden_name]) && !empty($fields[$simple_hidden_name])) {
+                                        $term_id = $fields[$simple_hidden_name];
+                                        \Drupal::logger('media_attributes_manager')->debug('Found alternative hidden term ID field @field with value @term_id', [
+                                            '@field' => $simple_hidden_name,
+                                            '@term_id' => $term_id
+                                        ]);
+                                    }
+                                }
+
+                                // Si on n'a pas trouvé d'ID dans le champ caché, essayer d'extraire de la valeur principale
+                                if (!$term_id) {
+                                    // Si value est déjà un nombre, c'est déjà un ID
+                                    if (is_numeric($value)) {
+                                        $term_id = $value;
+                                    }
+                                    // Sinon, essayer d'extraire l'ID du format "Label (id)"
+                                    else if (preg_match('/\(([0-9]+)\)$/', $value, $matches)) {
+                                        $term_id = $matches[1];
+                                    }
+                                }
+
+                                // Si on a un ID de terme, l'utiliser
+                                if ($term_id) {
+                                    // Vérifier que le terme existe
+                                    $term = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($term_id);
+                                    if ($term) {
+                                        $media->{$field_name} = $term_id;
+                                        $updated = TRUE;
+                                        \Drupal::logger('media_attributes_manager')->debug('Updated taxonomy field @field for media @id with term ID @term_id', [
+                                            '@field' => $field_name,
+                                            '@id' => $media->id(),
+                                            '@term_id' => $term_id
+                                        ]);
+                                    } else {
+                                        \Drupal::logger('media_attributes_manager')->warning('Taxonomy term with ID @id not found for field @field', [
+                                            '@id' => $term_id,
+                                            '@field' => $field_name
+                                        ]);
+                                    }
+                                } else {
+                                    // Sinon, utiliser le label pour chercher le terme
+                                    // Ce cas est peu probable avec notre implémentation améliorée
+                                    \Drupal::logger('media_attributes_manager')->warning('Could not find or extract term ID for field @field, value: @value', [
+                                        '@field' => $field_name,
+                                        '@value' => $value
+                                    ]);
+                                    $media->{$field_name} = $value;
+                                    $updated = TRUE;
+                                }
+                            } else {
+                                // Pour les autres types de champs, utiliser la valeur telle quelle
+                                $media->{$field_name} = $value;
+                                $updated = TRUE;
+                            }
                         }
                     } catch (\Exception $e) {
                         \Drupal::logger('media_attributes_manager')->error('Error updating field @field for media @id: @error', [

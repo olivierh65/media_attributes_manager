@@ -226,6 +226,9 @@ trait CustomFieldsTrait {
           // Configuration spécifique pour les taxonomies
           if ($target_type === 'taxonomy_term') {
             $widget['#tags'] = TRUE;
+            
+            // Ajouter un attribut data pour identifier facilement le champ comme taxonomie
+            $widget['#attributes']['data-taxonomy-field'] = 'true';
           }
           
           $form[$field_name] = $widget;
@@ -350,26 +353,82 @@ trait CustomFieldsTrait {
             }
           }
 
-          if (count($referenced_entities) === 1) {
-            // Une seule entité référencée, utiliser entity_autocomplete avec défaut
-            $default_entity = reset($referenced_entities);
-            $field_container[$field_name] = $this->buildCustomFieldWidget($definition, $default_entity->id());
-          } elseif (count($referenced_entities) > 1) {
-            // Plusieurs entités référencées, créer un select avec les labels
-            $options = [];
-            foreach ($referenced_entities as $id => $entity) {
-              $options[$id] = $entity->label();
-            }
-            $field_container[$field_name] = [
-              '#type' => 'select',
-              '#title' => $definition->getLabel(),
-              '#options' => $options,
-              '#empty_option' => $this->t('- Choisir -'),
-              '#default_value' => NULL,
-            ];
-          } else {
-            // Aucune entité référencée, entity_autocomplete vide
+          // Gestion spéciale pour les champs taxonomie
+          if ($target_type === 'taxonomy_term') {
+            // Créer l'autocomplete widget qui sera toujours présent
             $field_container[$field_name] = $this->buildCustomFieldWidget($definition, NULL);
+            
+            // Ajouter un champ caché pour stocker l'ID du terme de taxonomie
+            $hidden_id = $field_name . '_tid';
+            $field_container[$hidden_id] = [
+              '#type' => 'hidden',
+              '#attributes' => [
+                'class' => ['taxonomy-term-id'],
+                'data-for-field' => $field_name,
+              ],
+            ];
+            
+            // Si nous avons des entités référencées, ajouter un select supplémentaire pour faciliter la sélection
+            if (count($referenced_entities) > 0) {
+              // Ajouter une liste déroulante avec les termes existants
+              $options = [];
+              foreach ($referenced_entities as $id => $entity) {
+                $options[$id] = $entity->label();
+              }
+              
+              // Si une seule valeur, la définir comme défaut dans l'autocomplete et dans le champ caché
+              if (count($referenced_entities) === 1) {
+                $default_entity = reset($referenced_entities);
+                $field_container[$field_name]['#default_value'] = $default_entity;
+                $field_container[$hidden_id]['#default_value'] = $default_entity->id();
+              } else {
+                // Plusieurs valeurs, ajouter un select pour choisir parmi les valeurs existantes
+                $select_id = $field_name . '_selector';
+                $field_container[$select_id] = [
+                  '#type' => 'select',
+                  '#title' => $this->t('Valeurs existantes pour @field', ['@field' => $definition->getLabel()]),
+                  '#options' => $options,
+                  '#empty_option' => $this->t('- Sélectionner une valeur existante -'),
+                  '#attributes' => [
+                    'class' => ['taxonomy-term-selector'],
+                    'data-target-field' => $field_name,
+                    'data-target-id-field' => $hidden_id,
+                    'data-field-name' => $select_id,
+                    'data-field-type' => 'taxonomy_selector',
+                    'data-bundle' => $bundle,
+                  ],
+                  '#weight' => -1, // Pour placer le sélecteur avant le champ autocomplete
+                ];
+                
+                // Ajouter des attributs spécifiques pour identifier ce champ comme taxonomie
+                $field_container[$field_name]['#attributes']['data-has-selector'] = 'true';
+                $field_container[$field_name]['#attributes']['data-selector-id'] = $select_id;
+                $field_container[$field_name]['#attributes']['data-hidden-id-field'] = $hidden_id;
+              }
+            }
+          } else {
+            // Pour les autres types d'entités (non-taxonomies)
+            if (count($referenced_entities) === 1) {
+              // Une seule entité référencée, utiliser entity_autocomplete avec défaut
+              $default_entity = reset($referenced_entities);
+              $field_container[$field_name] = $this->buildCustomFieldWidget($definition, $default_entity->id());
+            } elseif (count($referenced_entities) > 1) {
+              // Plusieurs entités référencées, créer un select avec les labels
+              $options = [];
+              foreach ($referenced_entities as $id => $entity) {
+                $options[$id] = $entity->label();
+              }
+              $field_container[$field_name] = [
+                '#type' => 'select',
+                '#title' => $definition->getLabel(),
+                '#options' => $options,
+                '#empty_option' => $this->t('- Choisir -'),
+                '#default_value' => NULL,
+              ];
+            } else {
+              // Aucune entité référencée, entity_autocomplete vide
+              $field_container[$field_name] = $this->buildCustomFieldWidget($definition, NULL);
+            }
           }
         } elseif (count($values) === 1) {
           // Une seule valeur, champ classique avec valeur par défaut.
@@ -511,6 +570,14 @@ trait CustomFieldsTrait {
         // Configuration spécifique pour les taxonomies
         if ($target_type === 'taxonomy_term') {
           $widget['#tags'] = TRUE;
+          
+          // Ajouter un attribut data pour identifier facilement le champ comme taxonomie
+          $widget['#attributes']['data-taxonomy-field'] = 'true';
+          
+          // Si nous avons une entité par défaut, stocker son ID
+          if ($entity_default) {
+            $widget['#attributes']['data-term-id'] = $entity_default->id();
+          }
         }
         
         return $widget;

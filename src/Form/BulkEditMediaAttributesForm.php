@@ -42,6 +42,12 @@ class BulkEditMediaAttributesForm extends FormBase {
     // Ajouter un wrapper pour AJAX
     $form['#prefix'] = '<div id="bulk-edit-form-wrapper">';
     $form['#suffix'] = '</div>';
+    
+    // Attacher les bibliothèques JavaScript nécessaires
+    $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_form_submit';
+    $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_taxonomy_selector';
+    $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_field_initializer';
+    $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_term_handler';
 
     // Normaliser les media_data pour extraire seulement les IDs numériques
     $normalized_media_ids = [];
@@ -117,6 +123,10 @@ class BulkEditMediaAttributesForm extends FormBase {
     $form['#attached']['library'][] = 'core/jquery.ui.autocomplete';
     // Attacher le gestionnaire de soumission AJAX du formulaire
     $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_form_submit';
+    // Attacher le gestionnaire des sélecteurs de termes taxonomiques
+    $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_taxonomy_selector';
+    // Attacher le nouveau script d'initialisation des champs de taxonomie
+    $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_field_initializer';
 
     // Charger toutes les entités médias sélectionnées
     $media_entities = [];

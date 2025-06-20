@@ -10,6 +10,7 @@ use Drupal\Core\Ajax\AjaxResponse;
 use Drupal\Core\Ajax\OpenModalDialogCommand;
 use Drupal\Core\Ajax\CloseModalDialogCommand;
 use Drupal\Core\Ajax\AlertCommand; // Optionnel, pour les erreurs
+use Drupal\Core\Render\Element; // Pour accéder à Element::children()
 
 function media_attributes_manager_theme($existing, $type, $theme, $path) {
   return [
@@ -30,5 +31,75 @@ function media_attributes_manager_theme($existing, $type, $theme, $path) {
       'template' => 'media-attributes-widget-actions',
     ],
   ];
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function media_attributes_manager_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  // S'applique spécifiquement au formulaire d'édition en masse des médias
+  if ($form_id === 'media_attributes_bulk_edit_form') {
+    // Ajouter une fonction post-construction pour s'assurer que tous les attributs data nécessaires sont présents
+    $form['#after_build'][] = 'media_attributes_manager_form_after_build';
+  }
+}
+
+/**
+ * Fonction after_build pour le formulaire d'édition en masse.
+ */
+function media_attributes_manager_form_after_build($form, FormStateInterface $form_state) {
+  // Parcourir les éléments du formulaire pour ajouter les attributs data manquants
+  _media_attributes_manager_process_form_element($form);
+  return $form;
+}
+
+/**
+ * Traite récursivement les éléments du formulaire pour ajouter les attributs data nécessaires.
+ */
+function _media_attributes_manager_process_form_element(&$element, $parent = '') {
+  foreach (Element::children($element) as $key) {
+    $current = &$element[$key];
+    
+    // Vérifier si c'est un champ entity_autocomplete pour taxonomie
+    if (isset($current['#type']) && $current['#type'] === 'entity_autocomplete' && 
+        isset($current['#target_type']) && $current['#target_type'] === 'taxonomy_term') {
+      
+      // S'assurer que l'attribut data-taxonomy-field est présent
+      if (!isset($current['#attributes']['data-taxonomy-field'])) {
+        $current['#attributes']['data-taxonomy-field'] = 'true';
+      }
+      
+      // Si nous avons une valeur par défaut qui est une entité, stocker son ID
+      if (isset($current['#default_value']) && is_object($current['#default_value'])) {
+        $current['#attributes']['data-term-id'] = $current['#default_value']->id();
+      }
+      
+      // Chercher un champ caché associé pour l'ID
+      $hidden_id_field = $key . '_tid';
+      if (!isset($element[$hidden_id_field])) {
+        // Créer un champ caché s'il n'existe pas déjà
+        $element[$hidden_id_field] = [
+          '#type' => 'hidden',
+          '#attributes' => [
+            'class' => ['taxonomy-term-id'],
+            'data-for-field' => $key,
+          ],
+        ];
+        
+        // Si nous avons une valeur par défaut, l'utiliser pour l'ID également
+        if (isset($current['#default_value']) && is_object($current['#default_value'])) {
+          $element[$hidden_id_field]['#value'] = $current['#default_value']->id();
+        }
+        
+        // Mettre à jour le champ autocomplete pour référencer ce champ caché
+        $current['#attributes']['data-hidden-id-field'] = $hidden_id_field;
+      }
+    }
+    
+    // Traitement récursif des éléments enfants
+    if (is_array($current) && !empty(Element::children($current))) {
+      _media_attributes_manager_process_form_element($current, $key);
+    }
+  }
 }
 

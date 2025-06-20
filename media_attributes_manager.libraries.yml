@@ -16,10 +16,14 @@ widget:
 selection:
   js:
     js/media-attributes-selection.js: {}
+  css:
+    theme:
+      css/media-batch-selection.css: {}
   dependencies:
     - core/drupal
     - core/jquery
     - core/once
+    - core/drupal.dialog
 
 sortable:
   version: 1.x
@@ -70,3 +74,29 @@ bulk_edit_form_submit:
     - core/jquery
     - core/drupal.message
     - core/once
+
+bulk_edit_taxonomy_selector:
+  js:
+    js/taxonomy-term-selector.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+
+taxonomy_field_initializer:
+  js:
+    js/taxonomy-field-initializer.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+    - core/drupal.ajax
+
+taxonomy_term_handler:
+  js:
+    js/taxonomy-term-handler.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+    - core/drupal.autocomplete
