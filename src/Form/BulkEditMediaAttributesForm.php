@@ -49,6 +49,9 @@ class BulkEditMediaAttributesForm extends FormBase {
     $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_field_initializer';
     $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_term_handler';
     $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_form';
+    $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_values_selector';
+    $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_select2';
+    // $form['#attached']['library'][] = 'select2/select2';
 
     // Normaliser les media_data pour extraire seulement les IDs numériques
     $normalized_media_ids = [];

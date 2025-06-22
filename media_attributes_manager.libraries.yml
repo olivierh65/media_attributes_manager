@@ -4,8 +4,7 @@ widget:
     js/media-attributes-tooltip.js: {}
   css:
     theme:
-      css/media-attributes-widget.css: {}
-      css/media-attributes-tooltip.css: {}
+      css/media-attributes-combined.css: {} # Fichier CSS combiné
   dependencies:
     - core/drupal
     - core/jquery
@@ -21,7 +20,8 @@ selection:
     js/media-attributes-selection.js: {}
   css:
     theme:
-      css/media-batch-selection.css: {}
+      css/media-editor-combined.css: {} # Fichier CSS combiné pour l'édition
+      css/media-attributes-combined.css: {} # Fichier CSS combiné pour les attributs
   dependencies:
     - core/drupal
     - core/jquery
@@ -108,20 +108,33 @@ media_attributes_refresh:
     js/media-attributes-refresh.js: {}
   css:
     theme:
-      css/media-attributes-refresh.css: {}
+      css/media-attributes-combined.css: {} # Utilisation du fichier CSS combiné
   dependencies:
     - core/drupal
     - core/jquery
     - core/once
     - core/drupal.ajax
-    - core/drupal
-    - core/jquery
-    - core/once
     - core/drupal.autocomplete
 
 bulk_edit_form:
   css:
     theme:
-      css/bulk-edit-form.css: {}
+      css/media-editor-combined.css: {} # Fichier CSS combiné
   dependencies:
     - core/drupal
+
+taxonomy_values_selector:
+  js:
+    js/taxonomy-values-selector.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+
+bulk_edit_select2:
+  js:
+    js/bulk-edit-init-modal-select2.js: {}
+  dependencies:
+    - select2/select2
+    - core/jquery.ui
+    - core/drupal.dialog

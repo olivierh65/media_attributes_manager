@@ -1,6 +1,86 @@
 /**
- * Styles pour le formulaire d'édition en masse des attributs de médias.
- * Version modernisée et unifiée pour tous les cas d'usage (sélection unique ou multiple)
+ * Styles combinés pour les interfaces d'édition des médias
+ * Fusion de bulk-edit-form.css et media-batch-selection.css
+ */
+
+/*
+ * SECTION 1: Styles pour la sélection des médias
+ * (Contenu provenant de media-batch-selection.css)
+ */
+
+.media-selection-help-text {
+  background-color: #f5f5f5;
+  border-left: 4px solid #0078be;
+  padding: 8px 12px;
+  margin-bottom: 15px;
+  border-radius: 0 3px 3px 0;
+  font-size: 0.9em;
+  color: #333;
+}
+
+/* Style pour le widget de sélection de médias */
+.media-library-selection.has-batch-selection {
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+/* Effet de survol pour indiquer la possibilité de double-clic */
+.media-library-selection.has-batch-selection:hover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 120, 190, 0.05);
+  pointer-events: none;
+  z-index: 1;
+  border: 1px dashed rgba(0, 120, 190, 0.3);
+}
+
+/* Style pour montrer les éléments sélectionnés */
+.item-container.is-selected,
+.media-attributes-item.is-selected {
+  background-color: rgba(0, 120, 190, 0.1);
+  box-shadow: 0 0 0 1px rgba(0, 120, 190, 0.5);
+}
+
+/* Styles pour uniformiser la taille des éléments média (images et vidéos) */
+.media-library-selection .media-library-item {
+  display: inline-block;
+  position: relative;
+  vertical-align: top;
+}
+
+/* Assurer que toutes les miniatures (vidéos et images) ont la même hauteur */
+.media-library-selection .media-library-item__image {
+  position: relative;
+  height: 220px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Style spécifique pour les vidéos dans le mode sélection */
+.media-library-selection .media-library-item__image video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  max-height: 220px;
+}
+
+/* Correction pour le texte de chemin qui apparaît sous les médias */
+.media-library-item__image + div {
+  font-size: 0.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+/*
+ * SECTION 2: Styles pour le formulaire d'édition en masse
+ * (Contenu provenant de bulk-edit-form.css)
  */
 
 /* Formulaire global - réduction globale de la taille */
@@ -212,7 +292,7 @@ details .claro-details__wrapper > .field-checkbox {
 
 /* Réduire la taille des checkboxes elles-mêmes */
 .media-attributes-bulk-edit-form .field-checkbox input[type="checkbox"] {
-  transform: scale(0.85) translateX(2.5em) translateY(0.2em);;
+  transform: scale(0.85) translateX(2.5em) translateY(0.2em);
   margin: 0;
   vertical-align: middle;
   display: inline-block !important;
@@ -320,19 +400,6 @@ details .claro-details__wrapper > .field-checkbox {
   padding: 0.5em 0.7em;
 }
 
-/* Style pour les boutons d'action */
-.media-attributes-bulk-edit-form .form-actions {
-  margin-top: 0.8em;
-  padding-top: 0.8em;
-  border-top: 1px solid #e0e0e0;
-}
-
-/* Les boutons sont plus compacts */
-.media-attributes-bulk-edit-form .form-actions .button {
-  padding: 0.3em 0.8em;
-  font-size: 0.9em;
-}
-
 /* Style pour le message d'aide sous les champs */
 .media-attributes-bulk-edit-form .description {
   font-size: 0.75em;
@@ -363,7 +430,7 @@ details .claro-details__wrapper > .field-checkbox {
 .media-attributes-bulk-edit-form select {
   min-height: 1.8em;
   max-height: 2.2em;
-  padding: 0.1em 0.2em;
+  padding: 0.1em 0.2em !important;
 }
 
 /* Style pour les boutons d'autocomplétion */
@@ -485,7 +552,6 @@ details .claro-details__wrapper > .field-checkbox {
   padding-bottom: 0 !important;
 }
 
-
 /* Assurer que la largeur des champs est correcte */
 .media-attributes-bulk-edit-form input:not([type="checkbox"]),
 .media-attributes-bulk-edit-form select,
@@ -493,7 +559,6 @@ details .claro-details__wrapper > .field-checkbox {
   width: 100% !important;
   box-sizing: border-box !important;
 }
-
 
 /* Correction pour les checkboxes qui doivent être à gauche */
 .media-attributes-bulk-edit-form .field-checkbox {
@@ -510,8 +575,6 @@ details .claro-details__wrapper > .field-checkbox {
 .media-attributes-bulk-edit-form .claro-details__wrapper > .field-checkbox {
   order: 1 !important;
 }
-
-
 
 /* Style compact pour les éléments details */
 .media-attributes-bulk-edit-form details {
@@ -531,8 +594,6 @@ details .claro-details__wrapper > .field-checkbox {
 .media-attributes-bulk-edit-form details > div {
   padding: 0.5em;
 }
-
-/* Les commentaires de suppression ont été nettoyés */
 
 /* Style pour les éléments details de bundle */
 .media-attributes-bulk-edit-form details.field-checkbox-wrapper {
@@ -567,7 +628,6 @@ details .claro-details__wrapper > .field-checkbox {
 .media-attributes-bulk-edit-form details.field-checkbox-wrapper > div {
   padding: 0.5em;
   margin: 0 0 0 0;
-
 }
 
 /* Styles for Select2 fields in bulk edit form */
@@ -575,6 +635,23 @@ details .claro-details__wrapper > .field-checkbox {
   width: 100% !important;
   max-width: 100% !important;
   font-size: 0.85em;
+}
+
+/* Style spécifique pour réduire la hauteur des select2 avec la classe bulk-edit-select2 */
+.media-attributes-bulk-edit-form .select2-container--default .select2-selection--single.bulk-edit-select2,
+.media-attributes-bulk-edit-form .bulk-edit-select2 + .select2-container .select2-selection--single {
+  height: 24px !important;
+  line-height: 24px !important;
+}
+
+.media-attributes-bulk-edit-form .bulk-edit-select2 + .select2-container .select2-selection--single .select2-selection__rendered {
+  line-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.media-attributes-bulk-edit-form .bulk-edit-select2 + .select2-container .select2-selection--single .select2-selection__arrow {
+  height: 22px !important;
 }
 
 .media-attributes-bulk-edit-form .select2-container--default .select2-selection--single {

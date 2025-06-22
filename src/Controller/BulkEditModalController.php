@@ -241,6 +241,32 @@ class BulkEditModalController extends ControllerBase {
                                     if (strpos($field_name, '_clear') === false && strpos($field_name, '_tid') === false) {
                                         $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
 
+                                        // Vérifier si c'est un champ de taxonomie et convertir l'ID en label si nécessaire
+                                        if (is_string($field_value) && is_numeric($field_value) && 
+                                            !empty($custom_fields[$field_name]) && 
+                                            $custom_fields[$field_name]->getType() === 'entity_reference' &&
+                                            $custom_fields[$field_name]->getFieldStorageDefinition()->getSetting('target_type') === 'taxonomy_term') {
+                                            
+                                            // Charger le terme et utiliser son label
+                                            try {
+                                                $term = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($field_value);
+                                                if ($term) {
+                                                    $field_value = $term->label();
+                                                    \Drupal::logger('media_attributes_manager')->debug('Converted taxonomy ID @id to label @label for field @field', [
+                                                        '@id' => $field_value,
+                                                        '@label' => $term->label(),
+                                                        '@field' => $field_name
+                                                    ]);
+                                                }
+                                            }
+                                            catch (\Exception $e) {
+                                                \Drupal::logger('media_attributes_manager')->warning('Failed to load taxonomy term @id: @error', [
+                                                    '@id' => $field_value,
+                                                    '@error' => $e->getMessage()
+                                                ]);
+                                            }
+                                        }
+
                                         // Formater les valeurs pour un affichage cohérent
                                         if (is_array($field_value) && !empty($field_value)) {
                                             $full_fields[$safe_field_name] = implode(', ', $field_value);
@@ -255,6 +281,35 @@ class BulkEditModalController extends ControllerBase {
                                             $full_fields[$safe_field_name] = $field_value;
                                         }
                                     }
+                                }
+
+                                // Vérifier si c'est un champ de taxonomie et convertir l'ID en label si nécessaire
+                                if ($field_name && is_string($field_value) && is_numeric($field_value) && 
+                                    !empty($custom_fields[$field_name]) && 
+                                    $custom_fields[$field_name]->getType() === 'entity_reference' &&
+                                    $custom_fields[$field_name]->getFieldStorageDefinition()->getSetting('target_type') === 'taxonomy_term') {
+                                    
+                                    // Charger le terme et utiliser son label
+                                    try {
+                                        $term = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($field_value);
+                                        if ($term) {
+                                            $full_fields[$safe_field_name] = $term->label();
+                                            \Drupal::logger('media_attributes_manager')->debug('Converted taxonomy ID @id to label @label for field @field', [
+                                                '@id' => $field_value,
+                                                '@label' => $term->label(),
+                                                '@field' => $field_name
+                                            ]);
+                                        }
+                                    }
+                                    catch (\Exception $e) {
+                                        \Drupal::logger('media_attributes_manager')->warning('Failed to load taxonomy term @id: @error', [
+                                            '@id' => $field_value,
+                                            '@error' => $e->getMessage()
+                                        ]);
+                                    }
+                                }
+                                else {
+                                    $full_fields[$safe_field_name] = $field_value;
                                 }
 
                                 // Logger les champs mis à jour pour ce média

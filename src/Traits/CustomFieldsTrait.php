@@ -121,248 +121,6 @@ trait CustomFieldsTrait {
     return $values;
   }
 
-  /**
-   * Génère un sous-formulaire pour les champs personnalisés d'une entité.
-   *
-   * Utilisé pour le cas d'un SEUL média sélectionné.
-   * Les valeurs par défaut sont prises directement depuis l'entité.
-   * Chaque champ est accompagné d'une checkbox "Clear" pour vider le champ.
-   *
-   * @param \Drupal\Core\Entity\EntityInterface $entity
-   *   L'entité à inspecter.
-   * @param array $form
-   *   (optionnel) Le tableau de formulaire à compléter.
-   *
-   * @return array
-   *   Un tableau de sous-formulaire Drupal pour les champs custom.
-   */
-  public function buildCustomFieldsForm(EntityInterface $entity, array $form = []) {
-    if (!$entity instanceof FieldableEntityInterface) {
-      return $form;
-    }
-
-    // Ajouter une classe CSS pour le styling
-    $form['#attributes']['class'][] = 'media-attributes-bulk-edit-form';
-
-    // Créer un conteneur de type details pour chaque type de bundle
-    $bundle_key = $entity->bundle();
-
-    // IMPORTANT: Structure attendue par BulkEditMediaAttributesForm avec details
-    $form[$bundle_key] = [
-      '#type' => 'details',
-      '#title' => $this->getBundleLabel($bundle_key) . ' <span>(' . $bundle_key . ')</span>',
-      '#open' => TRUE,
-      '#attributes' => [
-        'class' => ['field-checkbox-wrapper'],
-        'data-drupal-selector' => 'edit-' . $bundle_key,
-        'id' => 'edit-' . $bundle_key . '--' . $this->generateRandomId(),
-      ],
-    ];
-
-    $custom_fields = $this->getCustomFields($entity);
-    foreach ($custom_fields as $field_name => $definition) {
-      $type = $definition->getType();
-
-      // Créer un conteneur qui regroupe la checkbox et le champ
-      $form[$bundle_key][$field_name . '_group'] = [
-        '#type' => 'container',
-        '#attributes' => [
-          'class' => ['field-checkbox-field-group'],
-          'data-drupal-selector' => 'edit-' . $field_name . '-group',
-          'id' => 'edit-' . $field_name . '-group--' . $this->generateRandomId(),
-        ],
-      ];
-
-      // Ajouter la checkbox en premier (à gauche) dans le groupe
-      $form[$bundle_key][$field_name . '_group'][$field_name . '_clear'] = [
-        '#type' => 'checkbox',
-        '#title' => $this->t('Clear'),
-        '#default_value' => FALSE,
-        '#attributes' => [
-          'class' => ['compact-checkbox'],
-          'data-field-name' => $field_name . '_clear',
-          'data-related-field' => $field_name,
-          'data-bundle' => $bundle_key,
-        ],
-        '#prefix' => '<div class="field-checkbox">',
-        '#suffix' => '</div>',
-        '#title_display' => 'after',
-      ];
-
-      // Créer un conteneur pour le champ principal dans le même groupe
-      $field_wrapper_class = 'field-container';
-
-      // Spécial pour les taxonomies
-      if ($type === 'entity_reference' &&
-          $definition->getFieldStorageDefinition()->getSetting('target_type') === 'taxonomy_term') {
-        $field_wrapper_class = 'taxonomy-field-container';
-      }
-
-      // Créer le conteneur pour le champ, dans le groupe
-      $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'] = [
-        '#type' => 'container',
-        '#attributes' => [
-          'class' => [$field_wrapper_class, 'compact-field-row'],
-          'data-drupal-selector' => 'edit-' . $field_name . '-wrapper',
-          'id' => 'edit-' . $field_name . '-wrapper--' . $this->generateRandomId(),
-        ],
-      ];
-
-      // Selon le type de champ
-      switch ($type) {
-        case 'string':
-        case 'string_long':
-        case 'text':
-        case 'text_long':
-        case 'text_with_summary':
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-            '#type' => 'textfield',
-            '#title' => $definition->getLabel(),
-            '#default_value' => $entity->get($field_name)->value ?? '',
-            '#size' => 60,
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-            '#title_display' => 'before',
-          ];
-          break;
-        case 'boolean':
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-            '#type' => 'checkbox',
-            '#title' => $definition->getLabel(),
-            '#default_value' => (bool) ($entity->get($field_name)->value ?? FALSE),
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-            '#title_display' => 'before',
-          ];
-          break;
-        case 'integer':
-        case 'float':
-        case 'decimal':
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-            '#type' => 'number',
-            '#title' => $definition->getLabel(),
-            '#default_value' => $entity->get($field_name)->value ?? '',
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-            '#title_display' => 'before',
-          ];
-          break;
-        case 'list_string':
-        case 'list_integer':
-          $allowed_values = $definition->getFieldStorageDefinition()->getSetting('allowed_values');
-          
-          // Create a select2 field with allowed values and free text entry
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-            '#type' => 'select2',
-            '#title' => $definition->getLabel(),
-            '#options' => $allowed_values,
-            '#default_value' => $entity->get($field_name)->value ?? '',
-            '#empty_option' => $this->t('- Select -'),
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#select2' => [
-              'placeholder' => $this->t('Select or type a new value'),
-              'allowClear' => TRUE,
-              'tags' => TRUE,
-            ],
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-            '#title_display' => 'before',
-          ];
-          break;
-        case 'entity_reference':
-          $target_type = $definition->getFieldStorageDefinition()->getSetting('target_type');
-
-          // Configuration spécifique pour les taxonomies
-          if ($target_type === 'taxonomy_term') {
-            // Ajouter un champ caché pour stocker l'ID du terme
-            $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name . '_tid'] = [
-              '#type' => 'hidden',
-              '#attributes' => [
-                'class' => ['taxonomy-term-id'],
-                'data-for-field' => $field_name,
-              ],
-            ];
-          }
-
-          // Créer le widget d'autocomplétion
-          $widget = [
-            '#type' => 'entity_autocomplete',
-            '#target_type' => $target_type,
-            '#title' => $definition->getLabel(),
-            '#default_value' => $entity->get($field_name)->entity ?? NULL,
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#title_display' => 'before',
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-          ];
-
-          // IMPORTANT : Copier les paramètres du handler de sélection depuis la définition du champ
-          $handler_settings = $definition->getSetting('handler_settings') ?? [];
-          $selection_handler = $definition->getSetting('handler') ?? 'default:' . $target_type;
-
-          $widget['#selection_handler'] = $selection_handler;
-          $widget['#selection_settings'] = $handler_settings;
-
-          // Configuration supplémentaire pour les taxonomies
-          if ($target_type === 'taxonomy_term') {
-            $widget['#tags'] = TRUE;
-            $widget['#attributes']['data-taxonomy-field'] = 'true';
-          }
-
-          // Ajouter le widget au conteneur
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = $widget;
-          break;
-
-        default:
-          // Pour tout autre type de champ, utiliser un simple textfield
-          $form[$bundle_key][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-            '#type' => 'textfield',
-            '#title' => $definition->getLabel(),
-            '#default_value' => $entity->get($field_name)->value ?? '',
-            '#attributes' => [
-              'class' => ['compact-field'],
-              'data-field-name' => $field_name,
-              'data-field-type' => $type,
-              'data-bundle' => $bundle_key,
-            ],
-            '#title_display' => 'before',
-            '#prefix' => '<div class="field-main">',
-            '#suffix' => '</div>',
-          ];
-          break;
-      }
-    }
-
-    return $form;
-  }
 
   /**
    * Obtient le libellé d'un bundle.
@@ -465,8 +223,7 @@ trait CustomFieldsTrait {
                 $field_values_by_field[$field_name][] = (string) $item;
               }
             }
-          }
-          elseif ($value !== null) {
+          } elseif ($value !== null) {
             $field_values_by_field[$field_name][] = (string) $value;
           }
         }
@@ -481,14 +238,14 @@ trait CustomFieldsTrait {
       foreach ($field_definitions as $field_name => $definition) {
         $type = $definition->getType();
         $values = $field_values_by_field[$field_name] ?? [];      // regroupe checkbox et champ principal dans un conteneur
-      $form[$bundle][$field_name . '_group'] = [
-        '#type' => 'container',
-        '#attributes' => [
-          'class' => ['field-checkbox-field-group'],
-          'data-drupal-selector' => 'edit-' . $field_name . '-group',
-          'id' => 'edit-' . $field_name . '-group--' . $this->generateRandomId(),
-        ],
-      ];
+        $form[$bundle][$field_name . '_group'] = [
+          '#type' => 'container',
+          '#attributes' => [
+            'class' => ['field-checkbox-field-group'],
+            'data-drupal-selector' => 'edit-' . $field_name . '-group',
+            'id' => 'edit-' . $field_name . '-group--' . $this->generateRandomId(),
+          ],
+        ];
         // Ajouter la checkbox "Clear" en premier (à gauche)
         $form[$bundle][$field_name . '_group'][$field_name . '_clear'] = [
           '#type' => 'checkbox',
@@ -509,8 +266,10 @@ trait CustomFieldsTrait {
         $field_wrapper_class = 'field-container';
 
         // Spécial pour les taxonomies
-        if ($type === 'entity_reference' &&
-            $definition->getFieldStorageDefinition()->getSetting('target_type') === 'taxonomy_term') {
+        if (
+          $type === 'entity_reference' &&
+          $definition->getFieldStorageDefinition()->getSetting('target_type') === 'taxonomy_term'
+        ) {
           $field_wrapper_class = 'taxonomy-field-container';
         }
 
@@ -540,7 +299,7 @@ trait CustomFieldsTrait {
                 '#options' => $options,
                 '#empty_option' => $this->t('- Select -'),
                 '#attributes' => [
-                  'class' => ['compact-field'],
+                  'class' => ['compact-field', 'bulk-edit-select2'],
                   'data-field-name' => $field_name,
                   'data-field-type' => $type,
                   'data-bundle' => $bundle,
@@ -549,13 +308,15 @@ trait CustomFieldsTrait {
                   'placeholder' => $this->t('Select or type a new value'),
                   'allowClear' => TRUE,
                   'tags' => TRUE,
+                  'width' => '100%',
+                  'dropdownAutoWidth' => TRUE,
+                   // voir autres parametres dans le fichier js
                 ],
                 '#prefix' => '<div class="field-main">',
                 '#suffix' => '</div>',
                 '#title_display' => 'before',
               ];
-            }
-            else {
+            } else {
               // Sinon un simple champ texte
               $single_value = !empty($values) ? reset($values) : '';
               $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
@@ -613,6 +374,24 @@ trait CustomFieldsTrait {
                 '#attributes' => [
                   'class' => ['taxonomy-term-id'],
                   'data-for-field' => $field_name,
+                ],
+              ];
+
+              // Ajouter un select pour les valeurs disponibles de taxonomie
+              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name . '_values_selector'] = [
+                '#type' => 'select',
+                '#title' => $this->t('Available values'),
+                '#title_display' => 'invisible',
+                '#options' => ['' => $this->t('- Select a value -')],
+                '#empty_option' => $this->t('- Select a value -'),
+                '#attributes' => [
+                  'class' => ['taxonomy-values-selector', 'form-select'],
+                  'data-for-field' => $field_name,
+                ],
+                '#prefix' => '<div class="taxonomy-values-selector-wrapper">',
+                '#suffix' => '</div>',
+                '#wrapper_attributes' => [
+                  'class' => ['taxonomy-values-selector-container'],
                 ],
               ];
             }
@@ -708,14 +487,15 @@ trait CustomFieldsTrait {
 
     // Si c'est une entité unique, on peut la traiter directement
     if ($single_entity) {
-      return $this->buildCustomFieldsForm($entity_array[0], $form);
+      return $this->buildCustomFieldsFormByBundle($entity_array, $label_callback, $form);
+      // return $this->buildCustomFieldsForm($entity_array[0], $form);
     }
 
     // Sinon on utilise la méthode existante pour plusieurs entités
     return $this->buildCustomFieldsFormByBundle($entity_array, $label_callback, $form);
   }
 
-    /**
+  /**
    * Génère un identifiant aléatoire pour les attributs HTML.
    *
    * @return string
@@ -771,5 +551,4 @@ trait CustomFieldsTrait {
     }
     return $values;
   }
-
 }

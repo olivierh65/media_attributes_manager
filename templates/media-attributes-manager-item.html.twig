@@ -25,7 +25,7 @@
 {% endfor %}
 
 {# Log des champs disponibles pour le débogage #}
-{# Décommenter pour déboguer 
+{# Décommenter pour déboguer
 {% set log_message = 'Champs disponibles pour le média ' ~ datas.media_id ~ ': ' ~ field_values|keys|join(', ') %}
 {{ drupal_message(log_message, 'debug') }}
 #}
@@ -45,9 +45,9 @@
       {% if datas.media_base_type == 'image' and (datas.media_thumbnail_url or datas.media_url) %}
         <img
           {% if datas.media_thumbnail_url %}
-          src="{{ datas.media_thumbnail_url }}"
+            src="{{ datas.media_thumbnail_url }}"
           {% else %}
-          src="{{ datas.media_url }}"
+            src="{{ datas.media_url }}"
           {% endif %}
           width="{{ datas.media_thumbnail_width }}"
           height="{{ datas.media_thumbnail_height }}"
@@ -71,7 +71,6 @@
         {% endif %}
         #}
       {% endif %}
-      {{ datas.media_url }}
 
       {# Tooltip pour afficher les attributs personnalisés du média #}
       {# Tooltip pour afficher les attributs personnalisés du média #}
@@ -79,13 +78,13 @@
         <div class="media-tooltip-header">{{ datas.media_title }}</div>
         <div class="media-tooltip-content">
           {% set displayed_fields = [] %}
-          
+
           {# 1. D'abord afficher les champs à partir de datas.values (valeurs directes du média) #}
           {% if datas.values is defined and datas.values is not empty %}
             {% for key, field_info in datas.values %}
               {% set field_name = field_info.machine_name|default(key) %}
               {% set displayed_fields = displayed_fields|merge([field_name]) %}
-              
+
               <div class="media-tooltip-attribute" data-field-name="{{ field_name }}">
                 <span class="media-tooltip-label">{{ field_info.label|default(field_name|capitalize) }}:</span>
                 <span class="media-tooltip-value">
@@ -100,7 +99,7 @@
               </div>
             {% endfor %}
           {% endif %}
-          
+
           {# 2. Ensuite compléter avec les attributs extraits des data-* #}
           {% for field_name, value in field_values %}
             {% if value is not empty and field_name not in displayed_fields %}
@@ -111,18 +110,23 @@
               </div>
             {% endif %}
           {% endfor %}
-          
+
           {# 3. Cas où il n'y aurait aucun champ à afficher - message informatif #}
           {% if displayed_fields is empty %}
             <div class="media-tooltip-attribute">
               <i>Aucun attribut personnalisé disponible</i>
             </div>
           {% endif %}
-          
+
           {# Supprimer les données de débogage #}
         </div>
       </div>
     </div>
+
+    <div class="media-item-url">
+      {{ datas.media_url }}
+    </div>
+
     {# Affichage des actions (checkbox, boutons) #}
     {% if buttons is defined %}
   <div class="media-attributes-actions-overlay">

@@ -13,3 +13,13 @@ media_attributes_manager.bulk_edit_submit:
     _title: 'Bulk Edit Submit'
   requirements:
     _permission: 'administer media'
+
+media_attributes_manager.taxonomy_values:
+  path: '/media-attributes/taxonomy-values'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\TaxonomyTermsController::getTaxonomyValues'
+    _title: 'Get Taxonomy Values'
+  requirements:
+    _permission: 'access media overview'
+  options:
+    _admin_route: TRUE

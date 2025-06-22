@@ -1,0 +1,445 @@
+/**
+ * Styles combinés pour les attributs média, tooltips et améliorations de l'interface de la galerie de médias
+ * Fusion de media-attributes-widget.css, media-attributes-tooltip.css, media-attributes-refresh.css et media-grid-improvements.css
+ */
+
+/*
+ * SECTION 1: Styles pour les widgets des attributs média
+ * (Contenu provenant de media-attributes-widget.css)
+ */
+
+.media-item-select-checkbox {
+  margin: 0;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.media-library-item__select.checkbox-wrapper:hover {
+  background: rgba(255, 255, 255, 1);
+}
+
+.media-library-item__actions {
+  display: flex;
+  align-items: flex-start; /* ou center selon le rendu souhaité */
+  position: absolute;
+  top: 0.5rem;
+  z-index: 2;
+  width: 95%;
+  gap: 0.5rem;
+  /* S'assure que les actions ne débordent pas */
+  pointer-events: auto;
+}
+
+/* Place la checkbox à gauche, puis les boutons */
+.media-library-item__actions .form-type--checkbox {
+  order: 0;
+  margin-right: 0.5rem;
+  margin-bottom: 0;
+}
+
+/* Optionnel : ajuste la taille/alignement de la checkbox */
+.media-library-item__actions .media-item-select-checkbox {
+  width: 1.3rem;
+  height: 1.3rem;
+  margin: 0;
+  vertical-align: middle;
+  border-width: 0.1rem;
+}
+
+/* Les boutons restent alignés à droite de la checkbox */
+.media-library-item__actions .media-library-item__edit,
+.media-library-item__actions .media-library-item__remove {
+  order: 1;
+  margin-left: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+/* Optionnel : réduire la taille du form-item autour de la checkbox */
+.media-library-item__actions .form-item {
+  margin: 0;
+  padding: 0;
+}
+
+/* Ajoute ce CSS dans ton module ou thème */
+.bulk-buttons-wrapper {
+  display: inline-block;
+  margin-left: 1em;
+}
+.bulk-buttons-wrapper .button {
+  margin-right: 0.5em;
+}
+
+.item-container.media-library-item--grid {
+  margin-bottom: 1.5rem; /* Espacement vertical entre les items */
+  /* Retire height, min-height, display: flex, overflow: hidden */
+  box-sizing: border-box;
+}
+
+.media-library-item__image img,
+.media-library-item__image video {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover; /* Optionnel, à retirer si tu veux garder le ratio natif */
+  max-width: 100%;
+}
+
+/* Styles pour les contrôles du lecteur vidéo */
+.media-library-item__image video::-webkit-media-controls {
+  opacity: 0.8; /* Légèrement transparents pour moins attirer l'attention */
+}
+
+/* Réduire la taille des contrôles vidéo */
+.media-library-item__image video::-webkit-media-controls-panel {
+  height: 30px;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * SECTION 2: Styles pour les tooltips des attributs personnalisés
+ * (Contenu provenant de media-attributes-tooltip.css)
+ */
+
+/* Conteneur du tooltip */
+.media-custom-attributes-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 1000;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  min-width: 200px;
+  max-width: 300px;
+  font-size: 12px;
+  color: #333;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 5px;
+}
+
+/* Conteneur de l'image avec tooltip - plus flexible */
+.media-item-with-tooltip {
+  position: relative;
+  width: 100%;
+  height: auto; /* Hauteur auto au lieu de fixe */
+  min-height: 180px; /* Hauteur minimale pour garantir une taille cohérente */
+  overflow: visible; /* Permettre au tooltip de déborder si nécessaire */
+  display: block;
+}
+
+/* Correction du comportement du tooltip - positionnement en dessous des boutons */
+.media-item-with-tooltip .media-custom-attributes-tooltip {
+  display: none;
+  position: absolute;
+  top: 40px !important; /* Position sous les boutons/checkboxes (environ 40px de hauteur) */
+  left: 0 !important;
+  right: 0 !important;
+  transform: none !important; /* Pas de transformation pour éviter les décalages */
+  width: 100% !important; /* Prend toute la largeur */
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: calc(100% - 40px) !important; /* Hauteur ajustée pour laisser l'espace aux boutons */
+  background-color: rgba(0, 0, 0, 0.85);
+  color: white;
+  z-index: 100;
+  overflow: auto;
+  padding: 12px;
+  box-sizing: border-box;
+  border-radius: 0 0 4px 4px; /* Coins arrondis uniquement en bas */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  margin: 0 !important;
+  border-top: none; /* Pas de bordure en haut pour une apparence intégrée */
+}
+
+/* Afficher le tooltip au survol */
+.media-item-with-tooltip:hover .media-custom-attributes-tooltip {
+  display: block;
+}
+
+/* Amélioration de la lisibilité et de l'apparence du tooltip */
+.media-tooltip-header {
+  font-weight: bold;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Style du contenu du tooltip - sans hauteur maximale fixe */
+.media-tooltip-content {
+  overflow-y: auto;
+  padding-right: 5px;
+  max-height: none; /* Suppression de la hauteur max fixe */
+}
+
+/* Amélioration du style des attributs pour une meilleure lisibilité */
+.media-tooltip-attribute {
+  margin-bottom: 6px;
+  line-height: 1.4;
+  display: flex;
+  flex-wrap: wrap; /* Permettre le retour à la ligne pour les petits écrans */
+}
+
+/* Ajustement des labels pour qu'ils prennent moins de place */
+.media-tooltip-label {
+  font-weight: bold;
+  margin-right: 5px;
+  flex-basis: 35%; /* Légèrement réduit */
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Plus d'espace pour les valeurs */
+.media-tooltip-value {
+  flex-grow: 1;
+  flex-basis: 60%;
+  word-break: break-word;
+}
+
+/* Assurer que l'image/vidéo reste bien dimensionnée */
+.media-item-with-tooltip img,
+.media-item-with-tooltip video {
+  width: 100%;
+  height: 220px; /* Hauteur fixe pour les médias */
+  object-fit: cover; /* Couvre tout l'espace disponible */
+  display: block;
+}
+
+/* Animation d'apparition pour une meilleure expérience utilisateur */
+@keyframes tooltipFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.media-item-with-tooltip:hover .media-custom-attributes-tooltip {
+  display: block;
+  animation: tooltipFadeIn 0.2s ease-in-out;
+}
+
+/*
+ * SECTION 3: Styles pour les effets de rafraîchissement
+ * (Contenu provenant de media-attributes-refresh.css)
+ */
+
+/* Style pour les éléments qui viennent d'être mis à jour */
+.media-updated {
+  transition: box-shadow 0.3s ease;
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+}
+
+/* Style pour les éléments qui ont été rafraîchis */
+.media-refreshed {
+  position: relative;
+  animation: media-refresh-pulse 1.5s ease-out;
+}
+
+/* Style pour les éléments mis à jour directement */
+.media-direct-update {
+  position: relative;
+  animation: media-direct-update-pulse 2s ease-out;
+}
+
+@keyframes media-refresh-pulse {
+  0% { box-shadow: 0 0 0 rgba(76, 175, 80, 0); }
+  25% { box-shadow: 0 0 12px rgba(76, 175, 80, 0.7); }
+  70% { box-shadow: 0 0 12px rgba(76, 175, 80, 0.7); }
+  100% { box-shadow: 0 0 0 rgba(76, 175, 80, 0); }
+}
+
+@keyframes media-direct-update-pulse {
+  0% { box-shadow: 0 0 0 rgba(33, 150, 243, 0); }
+  25% { box-shadow: 0 0 15px rgba(33, 150, 243, 0.8); }
+  70% { box-shadow: 0 0 15px rgba(33, 150, 243, 0.8); }
+  100% { box-shadow: 0 0 0 rgba(33, 150, 243, 0); }
+}
+
+/* Le débogueur est toujours caché, même après une mise à jour */
+.media-tooltip-debug {
+  display: none !important;
+}
+
+/* Ajout d'un indicateur visuel temporaire pour les tooltips rafraîchis */
+.media-refreshed .media-tooltip-attribute {
+  transition: background-color 0.5s ease;
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+/*
+ * SECTION 4: Améliorations de la présentation de la grille de médias
+ * (Contenu provenant de media-grid-improvements.css)
+ */
+
+/* Ensure all media items are aligned at the top */
+.media-library-item--grid {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important; /* Align at top */
+  height: auto !important;
+}
+
+/* Ensure media name is displayed at the bottom of the grid cell */
+.media-library-item__attributes {
+  margin-top: auto !important; /* Push to bottom */
+  padding-top: 0.5rem !important;
+  width: 100% !important;
+}
+
+.media-library-item__name {
+  font-size: 0.8rem !important;
+  text-align: center !important;
+  word-break: break-word !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important; /* Limit to 2 lines */
+  line-clamp: 2 !important; /* Standard property for compatibility */
+  -webkit-box-orient: vertical !important;
+}
+
+/* Reduce video player width in the grid */
+.media-library-item__image video {
+  height: auto !important;
+  object-fit: contain !important; /* Preserve aspect ratio */
+  margin: 0 auto !important; /* Center the video */
+  width: 100%;
+  object-fit: cover; /* Garantit que la vidéo remplit l'espace tout en préservant les proportions */
+  background-color: #979393; /* Fond gris pour les vidéos */
+}
+
+
+/* Maintain image proportions */
+.media-library-item__image img {
+  object-fit: contain !important;
+  height: auto !important;
+}
+
+/* Ensure preview area has consistent height */
+.media-library-item__preview {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 220px !important; /* Fixed height for consistency */
+  overflow: hidden !important;
+}
+
+/* Fix alignment in selection views */
+.media-library-selection .media-library-item {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Media item container */
+.item-container.media-library-item--grid {
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  min-height: 280px !important; /* Accommodates media + name */
+}
+
+/* Media attributes item fixing */
+.media-library-item.media-attributes-item {
+  height: auto !important;
+  min-height: 220px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  position: relative;
+}
+
+.media-item-url {
+  width: 100%;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #333;
+  font-size: 0.85em;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin-top: auto; /* Pousse vers le bas */
+}
+
+/* 
+ * SECTION 5: Styles pour le sélecteur de valeurs taxonomiques
+ * Nouvelle section pour le formulaire d'édition en masse avec sélecteur de taxonomies
+ */
+
+/* Container pour les champs de taxonomie */
+.taxonomy-field-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important; /* Aligner par le haut pour un meilleur contrôle */
+  flex-wrap: nowrap !important;
+  gap: 0.5rem !important;
+  width: 100% !important;
+}
+
+/* Réduire la largeur du champ d'autocomplétion de taxonomie */
+.taxonomy-field-container .field-main {
+  width: 60% !important; /* Réduire encore plus la largeur */
+  flex-grow: 2 !important;
+}
+
+/* Ajustement vertical du label dans le champ taxonomie */
+.taxonomy-field-container .field-main label {
+  margin-bottom: 0.25rem !important;
+}
+
+/* Ajustement du conteneur du sélecteur de valeurs */
+.taxonomy-values-selector-wrapper {
+  margin-top: 1.4rem !important; /* Réduit de 1.45rem pour aligner verticalement avec le champ d'autocomplétion */
+  width: 6em!important;
+  flex-grow: 1 !important;
+}
+
+/* Style pour le sélecteur de taxonomies */
+.taxonomy-values-selector {
+  width: 100% !important;
+  height: 38px !important; /* Même hauteur que le champ autocomplete */
+  border-color: #ccc !important;
+  border-radius: 4px !important;
+  padding: 0.4rem !important;
+  -webkit-appearance: none !important; /* Supprime l'apparence native */
+  -moz-appearance: none !important; /* Pour Firefox */
+  appearance: none !important; /* Supprime l'apparence native */
+  background-color: #fff !important;
+  font-size: 0.95em !important;
+  /* Fix pour l'alignement vertical */
+  margin-top: 0.25rem !important;
+  vertical-align: middle !important;
+  /* Ajout d'une flèche personnalisée */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23444' d='M4.5 5.5l3.5 3.5 3.5-3.5z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.5em center !important;
+  padding-right: 1.5em !important;
+}
+
+/* Style sur hover */
+.taxonomy-values-selector:hover {
+  border-color: #999 !important;
+}
+
+/* Style sur focus */
+.taxonomy-values-selector:focus {
+  outline: 2px solid #26a0da !important;
+  outline-offset: 1px !important;
+}
+
+/* Mettre en évidence visuellement le lien entre le champ et son sélecteur */
+.taxonomy-field-container:hover {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  border-radius: 4px !important;
+  transition: background-color 0.3s ease !important;
+}
+
+/* Amélioration des styles des champs de formulaire */
+.taxonomy-field-container .form-autocomplete {
+  min-width: 50px !important;
+}
