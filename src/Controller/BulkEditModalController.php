@@ -285,21 +285,21 @@ class BulkEditModalController extends ControllerBase {
                     foreach ($updated_media_data as $media_item) {
                         $selector = '[data-entity-id="media:' . $media_item['id'] . '"]';
                         $tooltip_selector = $selector . ' .media-item-with-tooltip';
-                        
+
                         // Ajouter une classe temporaire pour indiquer que l'élément a été mis à jour
                         $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
                             $selector,
                             'addClass',
                             ['media-updated']
                         ));
-                        
+
                         // Forcer la mise à jour des attributs data-* avec les nouvelles valeurs
                         $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(
                             $tooltip_selector,
                             'attr',
                             ['data-force-update', (new \DateTime())->format('U')]
                         ));
-                        
+
                         // Mettre à jour chaque attribut data-media-attr-* avec les nouvelles valeurs
                         if (!empty($media_item['fields'])) {
                             foreach ($media_item['fields'] as $field_name => $field_value) {
@@ -310,7 +310,7 @@ class BulkEditModalController extends ControllerBase {
                                         'attr',
                                         ['data-media-attr-' . $field_name, $field_value]
                                     ));
-                                    
+
                                     // Mettre à jour le label si disponible
                                     if (!empty($media_item['fields'][$field_name . '_label'])) {
                                         $response->addCommand(new \Drupal\Core\Ajax\InvokeCommand(

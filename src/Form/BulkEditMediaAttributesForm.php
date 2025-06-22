@@ -42,12 +42,13 @@ class BulkEditMediaAttributesForm extends FormBase {
     // Ajouter un wrapper pour AJAX
     $form['#prefix'] = '<div id="bulk-edit-form-wrapper">';
     $form['#suffix'] = '</div>';
-    
-    // Attacher les bibliothèques JavaScript nécessaires
+
+    // Attacher les bibliothèques JavaScript et CSS nécessaires
     $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_form_submit';
     $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_taxonomy_selector';
     $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_field_initializer';
     $form['#attached']['library'][] = 'media_attributes_manager/taxonomy_term_handler';
+    $form['#attached']['library'][] = 'media_attributes_manager/bulk_edit_form';
 
     // Normaliser les media_data pour extraire seulement les IDs numériques
     $normalized_media_ids = [];
@@ -144,27 +145,13 @@ class BulkEditMediaAttributesForm extends FormBase {
       return $form;
     }
 
-    // Générer les sous-formulaires selon le nombre de médias sélectionnés
+    // Générer les sous-formulaires avec la méthode unifiée
     if (!empty($media_entities)) {
-      if (count($media_entities) === 1) {
-        // CAS 1 : Un seul média - utiliser buildCustomFieldsForm avec les valeurs par défaut
-        $custom_fields_form = $this->buildCustomFieldsForm($media_entities[0]);
-        if (!empty($custom_fields_form)) {
-          $form['custom_fields'] = [
-            '#type' => 'details',
-            '#title' => $this->t('Attributs personnalisés'),
-            '#open' => TRUE,
-          ] + $custom_fields_form;
-        }
-      } else {
-        // CAS 2 : Plusieurs médias - utiliser buildCustomFieldsFormByBundle avec sélecteurs intelligents
-        $form['custom_fields'] = $this->buildCustomFieldsFormByBundle($media_entities, function($bundle) {
-          return $this->t('Attributs personnalisés : @type', ['@type' => $bundle]);
-        });
-      }
+      // Utiliser la méthode unifiée pour traiter à la fois les sélections uniques et multiples
+      $form['custom_fields'] = $this->buildUnifiedCustomFieldsForm($media_entities, function($bundle) {
+        return $this->t('Attributs personnalisés : @type', ['@type' => $bundle]);
+      });
     }
-
-    // Le champ description a été supprimé conformément à la demande
 
     // Ajouter les actions comme un container explicite
     $form['actions'] = [

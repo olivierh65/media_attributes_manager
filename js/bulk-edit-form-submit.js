@@ -253,32 +253,35 @@
 
                   // Fonction locale pour extraire l'ID du format autocomplete "Label (id)"
                   function extractTermId() {
+                    // Déclarer la variable matches au début de la fonction
+                    let matches;
+                    
                     // D'abord vérifier si nous avons un ID de terme dans un attribut data
-                  if ($field.attr('data-term-id')) {
-                    console.log(`[FORM SUBMIT] Utilisation de l'ID de terme stocké dans data-term-id: ${$field.attr('data-term-id')}`);
-                    matches = [null, $field.attr('data-term-id')];
-                  }
-                  // Si non, continuer avec la méthode d'extraction traditionnelle
-                  else {
-                    // 1. Essayer le format standard "Label (id)"
-                    let matches = fieldValue.match(/\(([0-9]+)\)$/);
-    
-                    // 2. Essayer d'autres formats possibles
-                    if (!matches) {
-                      // Format "id" (juste un nombre)
-                      if (/^[0-9]+$/.test(fieldValue)) {
-                        matches = [null, fieldValue];
-                      }
-                      // Format "Label [id]"
-                      else if (fieldValue.match(/\[([0-9]+)\]$/)) {
-                        matches = fieldValue.match(/\[([0-9]+)\]$/);
-                      }
-                      // Format avec l'ID quelque part dans la chaîne
-                      else if (fieldValue.match(/[^0-9]([0-9]+)[^0-9]/)) {
-                        matches = fieldValue.match(/[^0-9]([0-9]+)[^0-9]/);
+                    if ($field.attr('data-term-id')) {
+                      console.log(`[FORM SUBMIT] Utilisation de l'ID de terme stocké dans data-term-id: ${$field.attr('data-term-id')}`);
+                      matches = [null, $field.attr('data-term-id')];
+                    }
+                    // Si non, continuer avec la méthode d'extraction traditionnelle
+                    else {
+                      // 1. Essayer le format standard "Label (id)"
+                      matches = fieldValue.match(/\(([0-9]+)\)$/);
+      
+                      // 2. Essayer d'autres formats possibles
+                      if (!matches) {
+                        // Format "id" (juste un nombre)
+                        if (/^[0-9]+$/.test(fieldValue)) {
+                          matches = [null, fieldValue];
+                        }
+                        // Format "Label [id]"
+                        else if (fieldValue.match(/\[([0-9]+)\]$/)) {
+                          matches = fieldValue.match(/\[([0-9]+)\]$/);
+                        }
+                        // Format avec l'ID quelque part dans la chaîne
+                        else if (fieldValue.match(/[^0-9]([0-9]+)[^0-9]/)) {
+                          matches = fieldValue.match(/[^0-9]([0-9]+)[^0-9]/);
+                        }
                       }
                     }
-                  }
 
                     if (matches && matches[1]) {
                       mediaFieldsByBundle[dataBundle][dataFieldName] = matches[1];

@@ -118,3 +118,10 @@ media_attributes_refresh:
     - core/jquery
     - core/once
     - core/drupal.autocomplete
+
+bulk_edit_form:
+  css:
+    theme:
+      css/bulk-edit-form.css: {}
+  dependencies:
+    - core/drupal

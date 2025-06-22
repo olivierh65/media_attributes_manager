@@ -7,4 +7,4 @@ dependencies:
   - drupal:media
   - entity_browser:entity_browser
   - media_directories:media_directories_ui
-  
+  - drupal:select2

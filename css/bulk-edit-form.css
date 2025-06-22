@@ -1,0 +1,630 @@
+/**
+ * Styles pour le formulaire d'édition en masse des attributs de médias.
+ * Version modernisée et unifiée pour tous les cas d'usage (sélection unique ou multiple)
+ */
+
+/* Formulaire global - réduction globale de la taille */
+.media-attributes-bulk-edit-form {
+  font-size: 0.85em;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+/* Container pour un bundle (détails) */
+.field-checkbox-wrapper {
+  width: 100%;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+/* Container pour un groupe champ+checkbox */
+.field-checkbox-field-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center; /* Better vertical alignment of checkbox with field */
+  margin-bottom: 0px;
+  width: 100%;
+  max-width: 500px; /* Slightly wider for better readability */
+  margin-top: 0px; /* Remove top margin for better alignment */
+  justify-items: start;
+}
+
+/* Container pour la checkbox "Clear" */
+.field-checkbox {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 45px;
+  height: 24px;
+  flex-shrink: 0;
+  padding-right: 4px;
+  box-sizing: border-box;
+  padding-top: 3px; /* Ajuster pour aligner avec les champs de saisie */
+}
+
+/* Container pour le champ principal */
+.field-container,
+.taxonomy-field-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Permet le text-overflow */
+}
+
+/* Div du champ principal */
+.field-main {
+  width: 100%;
+}
+
+/* Masquer les div inutiles dans le conteneur taxonomy */
+input.taxonomy-term-id {
+  display: none;
+}
+
+/* Réduire les marges des éléments de formulaire */
+.media-attributes-bulk-edit-form .form-item {
+  margin: 0;
+  padding: 0;
+}
+
+/* Réduire la taille des inputs et améliorer leur alignement */
+.media-attributes-bulk-edit-form input:not([type="checkbox"]),
+.media-attributes-bulk-edit-form select,
+.media-attributes-bulk-edit-form textarea {
+  font-size: 0.85em;
+  height: 28px;
+  line-height: 28px;
+  padding: 0 0.5em;
+  width: 100%;
+  margin: 0 !important;
+  border-radius: 3px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+/* Style for focused inputs */
+.media-attributes-bulk-edit-form input:not([type="checkbox"]):focus,
+.media-attributes-bulk-edit-form select:focus,
+.media-attributes-bulk-edit-form textarea:focus {
+  border-color: #0074bd;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 116, 189, 0.2);
+}
+
+/* Réduire la taille des labels */
+.media-attributes-bulk-edit-form label {
+  font-size: 0.85em;
+  font-weight: normal;
+  margin-bottom: 0;
+  line-height: 1.2;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Style spécifique pour les checkboxes et leurs labels */
+.media-attributes-bulk-edit-form input[type="checkbox"] {
+  vertical-align: middle;
+  width: auto;
+  cursor: pointer;
+  width: 2em;
+  height: 2em;
+}
+
+/* Mode responsive */
+@media screen and (max-width: 767px) {
+  .field-checkbox-field-group {
+    max-width: 100%;
+  }
+}
+
+/* Style des conteneurs de champ + checkbox - utilisation de flexbox pour meilleur alignement */
+.field-checkbox-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  position: relative;
+  margin-bottom: 0.5em;
+  width: 100%;
+}
+
+/* Style de la checkbox à gauche - alignement amélioré */
+.field-checkbox {
+  flex: 0 0 40px;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 3px; /* Aligner avec les champs de saisie */
+  padding-right: 5px;
+  margin-right: 5px;
+}
+
+/* Style pour les groupes de champs */
+.compact-field-row {
+  flex: 1;
+  min-width: calc(100% - 50px);
+  margin-bottom: 0.2em;
+}
+
+/* Style du champ principal */
+.field-main, .field-main-container {
+  flex: 1;
+  min-width: 0; /* Pour éviter le dépassement */
+}
+
+/* Styles pour les champs à l'intérieur des détails */
+details .field-checkbox {
+  display: inline-block;
+  vertical-align: top;
+  width: 60px;
+  margin-right: 10px;
+}
+
+details .field-main,
+details .taxonomy-field-container,
+details .field-container {
+  display: inline-block;
+  vertical-align: top;
+  width: calc(100% - 80px);
+}
+
+/* Réorganiser l'ordre des éléments HTML pour positionner les checkboxes à gauche */
+details .claro-details__wrapper {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+details .claro-details__wrapper > .field-checkbox {
+  order: 1;
+  margin-right: 10px;
+}
+
+/* S'assurer que le conteneur a un positionnement relatif */
+.claro-details__wrapper {
+  position: relative !important;
+  display: block !important;
+  padding-top: 0 !important; /* Réduire l'espace au-dessus */
+  padding-bottom: 5px !important; /* Réduire l'espace en-dessous */
+}
+
+/* Style des labels des checkbox pour les rendre plus petits et compacts */
+.media-attributes-bulk-edit-form .field-checkbox label {
+  text-align: center;
+  position: relative;
+  transform: translateY(-1.3em);
+}
+
+/* Aligner et centrer le contenu des checkboxes */
+.field-checkbox-wrapper .field-checkbox .form-item {
+  display: flex;
+  align-items: flex-start; /* Aligner en haut pour mieux positionner avec le texte */
+  justify-content: center;
+  margin: 0;
+  text-align: center;
+}
+
+/* Espacement correct entre la checkbox et son label */
+.field-checkbox-wrapper .field-checkbox input {
+  margin-right: 4px;
+}
+
+/* Réduire la taille des checkboxes elles-mêmes */
+.media-attributes-bulk-edit-form .field-checkbox input[type="checkbox"] {
+  transform: scale(0.85) translateX(2.5em) translateY(0.2em);;
+  margin: 0;
+  vertical-align: middle;
+  display: inline-block !important;
+  width: 2em;
+  height: 2em;
+}
+
+/* Style spécifique pour les checkbox autocomplete qui ont une structure différente */
+.media-attributes-bulk-edit-form .claro-autocomplete {
+  width: 100% !important;
+}
+
+/* Gestion des margins pour éviter les collisions */
+.media-attributes-bulk-edit-form .field-main .form-item {
+  margin: 0 0 0.5em 0 !important;
+}
+
+/* Réduction de la hauteur des zones de texte */
+.media-attributes-bulk-edit-form textarea {
+  min-height: 40px;
+  max-height: 80px;
+}
+
+/* Style pour les boutons d'action */
+.media-attributes-bulk-edit-form .form-actions {
+  margin-top: 0.8em;
+  padding-top: 0.8em;
+  border-top: 1px solid #e0e0e0;
+}
+
+/* Les boutons sont plus compacts */
+.media-attributes-bulk-edit-form .form-actions .button {
+  padding: 0.3em 0.8em;
+  font-size: 0.9em;
+}
+
+/* Style le bouton de soumission */
+.media-attributes-bulk-edit-form .form-actions {
+  margin-top: 20px;
+  text-align: right;
+}
+
+.media-attributes-bulk-edit-form .bulk-edit-submit-button {
+  background: #0074bd;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.media-attributes-bulk-edit-form .bulk-edit-submit-button:hover,
+.media-attributes-bulk-edit-form .bulk-edit-submit-button:focus {
+  background: #005a90;
+  outline: none;
+}
+
+/* Réduire l'espace pour les champs entity_reference */
+.media-attributes-bulk-edit-form .form-autocomplete {
+  padding-right: 20px;
+  background-position: 99% center;
+  background-size: 16px;
+}
+
+/* Assurer que les checkbox sont bien alignées verticalement */
+.field-checkbox-container input[type="checkbox"] {
+  vertical-align: middle;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Assurer que tous les champs ont la même hauteur */
+.field-main-container .form-item {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Style pour les champs de type checkbox dans le conteneur principal */
+.field-main-container .checkbox {
+  margin-top: 0;
+}
+
+/* Styles pour les details wrapper */
+.media-attributes-bulk-edit-form details > .details-wrapper {
+  padding: 0.5em;
+}
+
+/* Style pour les sections de bundle */
+.media-attributes-bulk-edit-form details {
+  margin-bottom: 0.8em;
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+}
+
+.media-attributes-bulk-edit-form details summary {
+  padding: 0.3em 0.5em;
+  font-weight: bold;
+  font-size: 0.9em;
+  background-color: #f0f0f0;
+}
+
+.media-attributes-bulk-edit-form details > .details-wrapper {
+  padding: 0.5em 0.7em;
+}
+
+/* Style pour les boutons d'action */
+.media-attributes-bulk-edit-form .form-actions {
+  margin-top: 0.8em;
+  padding-top: 0.8em;
+  border-top: 1px solid #e0e0e0;
+}
+
+/* Les boutons sont plus compacts */
+.media-attributes-bulk-edit-form .form-actions .button {
+  padding: 0.3em 0.8em;
+  font-size: 0.9em;
+}
+
+/* Style pour le message d'aide sous les champs */
+.media-attributes-bulk-edit-form .description {
+  font-size: 0.75em;
+  margin-top: 0.1em;
+  color: #666;
+  line-height: 1.2;
+}
+
+/* Système de grille pour les champs */
+.bulk-form-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.4em;
+}
+
+/* Ajustements spécifiques pour les champs de taxonomie */
+.taxonomy-field-container {
+  margin-bottom: 0.4em;
+}
+
+.taxonomy-field-container .form-autocomplete {
+  min-height: 1.5em;
+  padding-top: 0.1em;
+  padding-bottom: 0.1em;
+}
+
+/* Style pour les champs select */
+.media-attributes-bulk-edit-form select {
+  min-height: 1.8em;
+  max-height: 2.2em;
+  padding: 0.1em 0.2em;
+}
+
+/* Style pour les boutons d'autocomplétion */
+.media-attributes-bulk-edit-form .form-autocomplete {
+  background-position: 98% center;
+  background-size: 1em;
+}
+
+/* Champs compacts */
+.compact-field {
+  width: 100%;
+  min-height: 1.8em;
+}
+
+/* Meilleur alignement pour les checkboxes */
+.compact-checkbox {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Assurer que le container checkbox est bien aligné */
+.field-checkbox {
+  display: flex !important;
+  align-items: center !important;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+/* Ajustements pour les éléments en ligne */
+.inline-form-item {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+}
+
+/* Ajustement vertical pour les labels et checkboxes */
+.inline-form-item .field-main {
+  margin-bottom: 0 !important;
+}
+
+.inline-form-item .field-checkbox {
+  margin-left: auto !important;
+  padding-left: 0.5em !important;
+  min-width: 60px !important;
+}
+
+/* Ajustements pour les terminaux mobiles */
+@media screen and (max-width: 768px) {
+  .bulk-form-fields-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-checkbox {
+    max-width: 60px;
+  }
+}
+
+/* Enlever le padding excessif dans les champs checkbox */
+.media-attributes-bulk-edit-form .form-checkbox {
+  margin: 0.1em 0.3em 0.1em 0;
+}
+
+/* Ajuster le positionnement dans les conteneurs de détails */
+.claro-details__wrapper .field-checkbox-wrapper {
+  margin-bottom: 12px;
+  padding-left: 5px;
+}
+
+/* Fix pour les champs entity reference */
+.media-attributes-bulk-edit-form .form-item--error-message {
+  font-size: 0.8em;
+  margin: 0.2em 0;
+}
+
+/* Amélioration de l'affichage pour les sélecteurs de taxonomies */
+.taxonomy-field-container select,
+.entity-field-container select {
+  max-width: 100%;
+  width: 100%;
+}
+
+/* Mode responsive */
+@media (max-width: 640px) {
+  .field-checkbox-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .field-checkbox-wrapper .field-main,
+  .field-checkbox-wrapper .field-checkbox {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    margin-right: 0;
+  }
+
+  .field-checkbox-wrapper .field-checkbox {
+    margin-top: 0.3em;
+    padding-top: 0;
+  }
+
+  .bulk-form-fields-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* S'assurer que le details n'est pas traité comme un field-checkbox-wrapper */
+.media-attributes-bulk-edit-form details.claro-details {
+  display: block !important;
+  position: relative !important;
+  padding: 0 !important;
+  margin-bottom: 1em !important;
+}
+
+/* Supprimer les marges et paddings excessifs du details wrapper */
+.media-attributes-bulk-edit-form details .claro-details__wrapper {
+  padding-top: 0.5em !important;
+  padding-bottom: 0 !important;
+}
+
+
+/* Assurer que la largeur des champs est correcte */
+.media-attributes-bulk-edit-form input:not([type="checkbox"]),
+.media-attributes-bulk-edit-form select,
+.media-attributes-bulk-edit-form textarea {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+
+/* Correction pour les checkboxes qui doivent être à gauche */
+.media-attributes-bulk-edit-form .field-checkbox {
+  margin-top: 0 !important; /* Ne plus décaler vers le bas */
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Applique !important aux règles flexbox pour s'assurer qu'elles sont respectées */
+.media-attributes-bulk-edit-form .claro-details__wrapper {
+  display: flex !important;
+}
+
+.media-attributes-bulk-edit-form .claro-details__wrapper > .field-checkbox {
+  order: 1 !important;
+}
+
+
+
+/* Style compact pour les éléments details */
+.media-attributes-bulk-edit-form details {
+  margin-bottom: 0.5em;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+}
+
+.media-attributes-bulk-edit-form details > summary {
+  padding: 0.3em 0.5em;
+  font-weight: bold;
+  font-size: 0.95em;
+  background-color: #f5f5f5;
+  cursor: pointer;
+}
+
+.media-attributes-bulk-edit-form details > div {
+  padding: 0.5em;
+}
+
+/* Les commentaires de suppression ont été nettoyés */
+
+/* Style pour les éléments details de bundle */
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 1em;
+  background-color: #f9f9f9;
+}
+
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper > summary {
+  padding: 0.4em 2.5em;
+  font-size: 1em;
+  font-weight: bold;
+  background-color: #e8e8e8;
+  border-bottom: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper > summary::marker,
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper > summary::-webkit-details-marker {
+  color: #0074bd;
+}
+
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper > summary > span {
+  opacity: 0.7;
+  font-size: 0.9em;
+  font-weight: normal;
+  font-style: italic;
+  margin-left: 0.5em;
+}
+
+.media-attributes-bulk-edit-form details.field-checkbox-wrapper > div {
+  padding: 0.5em;
+  margin: 0 0 0 0;
+
+}
+
+/* Styles for Select2 fields in bulk edit form */
+.media-attributes-bulk-edit-form .select2-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  font-size: 0.85em;
+}
+
+.media-attributes-bulk-edit-form .select2-container--default .select2-selection--single {
+  height: 28px;
+  line-height: 28px;
+  border-radius: 3px;
+  border: 1px solid #ccc;
+}
+
+.media-attributes-bulk-edit-form .select2-container--default .select2-selection--single .select2-selection__rendered {
+  line-height: 28px;
+  padding-left: 8px;
+}
+
+.media-attributes-bulk-edit-form .select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 26px;
+}
+
+/* Make sure select2 dropdown appears above the modal */
+.select2-container--open .select2-dropdown {
+  z-index: 10000;
+}
+
+/* Fix font size in the dropdown */
+.select2-container--default .select2-results__option {
+  font-size: 0.85em;
+}
+
+/* Ensure dropdown shows over modal overlay */
+.ui-dialog {
+  z-index: 1000 !important;
+}
+.select2-dropdown {
+  z-index: 1051 !important;
+}
+
+.field-checkbox input[type="checkbox"] {
+  margin-top: 0;
+  position: relative;
+  top: -1px; /* Ajustement fin pour l'alignement vertical */
+}
+
+/* Ajustement spécifique pour aligner avec les champs Select2 */
+.field-checkbox-field-group .select2-container {
+  margin-top: 0;
+}
+
+/* Assurer que les contenants des champs et checkbox sont alignés */
+.field-main {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+}

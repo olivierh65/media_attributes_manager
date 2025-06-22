@@ -101,11 +101,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 'type' => $definition->getType(),
                 'value' => $value,
               ];
-              
+
               // Ajoute également les valeurs comme attributs data pour le tooltip
               // Adaptez la clé pour qu'elle soit utilisable comme attribut HTML
               $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
-              
+
               // Format et convertit la valeur pour un attribut HTML
               $attr_value = $value;
               if (is_array($value)) {
@@ -114,14 +114,14 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               elseif (is_bool($value)) {
                 $attr_value = $value ? 'true' : 'false';
               }
-              
+
               // Limite la longueur pour éviter des attributs trop grands
               $attr_value = is_scalar($attr_value) ? substr((string) $attr_value, 0, 255) : '';
-              
+
               // Ajoute l'attribut data-*
               $element['current']['items'][$item_key]['#attributes']['data-media-attr-' . $safe_field_name] = (string) $attr_value;
-              
-              // Ajoute également l'étiquette du champ 
+
+              // Ajoute également l'étiquette du champ
               $element['current']['items'][$item_key]['#attributes']['data-media-label-' . $safe_field_name] = (string) $definition->getLabel();
             }
           }
@@ -355,7 +355,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         // Récupérer TOUS les champs personnalisés et leurs valeurs via le trait
         $custom_fields = $this->getCustomFields($media);
         $custom_values = $this->getCustomFieldValues($media);
-        
+
         // Préparer les données pour le template, en incluant tous les champs disponibles
         $values_for_tooltip = [];
         foreach ($custom_fields as $field_name => $definition) {
@@ -373,7 +373,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
             else if (is_bool($value)) {
               $value = $value ? 'Oui' : 'Non';
             }
-            
+
             $values_for_tooltip[$field_name] = [
               'label' => $definition->getLabel(),
               'type' => $definition->getType(),
@@ -382,7 +382,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
             ];
           }
         }
-        
+
         // Fusionner avec toutes les autres valeurs déjà présentes
         if (isset($item['#values']) && is_array($item['#values'])) {
           foreach ($item['#values'] as $field_name => $field_data) {
@@ -391,13 +391,13 @@ $element['#attached']['library'][] = 'core/jquery.form';
             }
           }
         }
-        
+
         // Log de débogage pour vérifier les valeurs disponibles
         \Drupal::logger('media_attributes_manager')->debug('Champs personnalisés pour le média @id: @fields', [
-          '@id' => $media->id(), 
+          '@id' => $media->id(),
           '@fields' => print_r(array_keys($values_for_tooltip), TRUE)
         ]);
-        
+
         $datas = [
           'media_id' => $media->id(),
           'media_url' => $media->toUrl()->toString(),
