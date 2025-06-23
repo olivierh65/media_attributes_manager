@@ -12,10 +12,12 @@ use Drupal\Core\Field\FieldWidget;
 use Drupal\Core\Render\Element;
 use Drupal\image\Entity\ImageStyle;
 use Drupal\Core\File\FileUrlGenerator;
+use Drupal\Component\Utility\NestedArray;
 use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
+use Drupal\Core\StringTranslation\TranslatableMarkup;
 
 /**
- * Plugin implementation of the 'media_attributes_widget' widget.
+ * Plugin implementation of 'media_attributes_widget' widget.
  *
  * @FieldWidget(
  *   id = "media_attributes_widget",
@@ -29,6 +31,16 @@ use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
 
 class MediaAttributesWidget extends EntityReferenceBrowserWidget {
   use CustomFieldsTrait;
+
+  /**
+   * Profondeur du bouton de suppression dans l'arborescence du formulaire.
+   *
+   * Cette variable est définie dans la classe parente EntityReferenceBrowserWidget,
+   * mais nous la redéfinissons ici pour assurer qu'elle existe dans notre classe.
+   *
+   * @var int
+   */
+  protected static $deleteDepth = 3;
 
   protected $field_definition;
 
@@ -153,6 +165,9 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // Ajoute notre librairie pour forcer l'initialisation du sortable
     $element['#attached']['library'][] = 'media_attributes_manager/sortable';
 
+    // Amélioration du support AJAX pour la suppression des médias
+    $element['#attached']['library'][] = 'core/drupal.ajax';
+    $element['#attached']['library'][] = 'core/drupal.dialog.ajax';
 
     // Ajoute le CSS du widget Media Directories UI si besoin.
     if ($this->getSetting('entity_browser') === 'media_directories_modal') {
@@ -248,6 +263,56 @@ $element['#attached']['library'][] = 'core/jquery.form';
   protected function displayCurrentSelection($details_id, array $field_parents, array $entities) {
     $render_array = parent::displayCurrentSelection($details_id, $field_parents, $entities);
 
+    // Ajouter des identifiants uniques et cohérents pour cibler les widgets avec AJAX
+    if (!isset($render_array['#attributes']['id'])) {
+      $render_array['#attributes']['id'] = $details_id . '-selection-area';
+    }
+    if (!isset($render_array['#attributes']['class'])) {
+      $render_array['#attributes']['class'] = [];
+    }
+    $render_array['#attributes']['class'][] = 'media-attributes-selection';
+    $render_array['#attributes']['class'][] = 'ajax-rebuild-target';
+
+    // Pour chaque bouton de suppression, s'assurer qu'il utilise notre rappel AJAX
+    foreach ($render_array['items'] as $key => &$item) {
+      if (isset($item['remove_button'])) {
+        // Ajouter notre rappel AJAX pour actualiser correctement les widgets
+        $item['remove_button']['#ajax'] = [
+          'callback' => [static::class, 'updateWidgetCallback'],
+          'wrapper' => $details_id,
+          'effect' => 'fade',
+          'progress' => [
+            'type' => 'throbber',
+            'message' => new TranslatableMarkup('Removing media...'),
+          ],
+        ];
+
+        // Ajouter des attributs supplémentaires pour faciliter le targeting AJAX
+        $item['remove_button']['#attributes']['class'][] = 'use-ajax';
+        $item['remove_button']['#attributes']['data-wrapper'] = $details_id;
+      }
+    }
+
+    // Assurez-vous que la valeur target_id est définie correctement dans le widget
+    // Cette valeur sera utilisée par removeItemSubmit()
+    $entity_ids = [];
+    foreach ($entities as $entity) {
+      $entity_ids[] = 'media:' . $entity->id();
+    }
+    $ids_string = implode(' ', $entity_ids);
+
+    // Debug: Log structure pour comprendre comment les médias sont stockés
+    \Drupal::logger('media_attributes_manager')->debug('Structure des IDs dans displayCurrentSelection: @ids', [
+      '@ids' => $ids_string
+    ]);
+
+    // S'assurer que target_id est défini dans le render_array
+    $render_array['target_id'] = [
+      '#type' => 'hidden',
+      '#value' => $ids_string,
+      '#attributes' => ['data-entity-ids' => $ids_string],
+    ];
+
     // Classes sur le conteneur principal
     $render_array['#attributes']['class'] = [
       'entities-list',
@@ -281,6 +346,25 @@ $element['#attached']['library'][] = 'core/jquery.form';
     foreach ($render_array['items'] as $key => &$item) {
       $item['buttons']['edit_button'] = $item['edit_button'];
       $item['buttons']['remove_button'] = $item['remove_button'];
+
+      // Ensure we have a valid details_id for the wrapper
+      if (!$details_id && isset($render_array['#id'])) {
+        $details_id = $render_array['#id'];
+      }
+
+      // Configuration AJAX optimisée pour le bouton de suppression
+      $item['buttons']['remove_button']['#ajax'] = [
+        'callback' => [static::class, 'updateWidgetCallback'],
+        'wrapper' => $details_id,
+        'effect' => 'fade',
+        'progress' => ['type' => 'throbber'],
+        'event' => 'click',
+        'method' => 'replace',
+      ];
+
+      // Store the wrapper ID and other necessary data for better identification
+      $item['buttons']['remove_button']['#attributes']['data-wrapper-id'] = $details_id;
+      $item['buttons']['remove_button']['#attributes']['data-target-id'] = $item['#attributes']['data-entity-id'] ?? '';
       $item['buttons']['replace_button'] = $item['replace_button'];
       $item['buttons']['select_checkbox'] = [
         '#type' => 'checkbox',
@@ -526,6 +610,355 @@ $element['#attached']['library'][] = 'core/jquery.form';
     \Drupal::messenger()->addMessage(\Drupal::translation()->translate('Bulk remove not yet implemented.'));
   }
 
+  /**
+   * Traite les actions de suppression d'éléments média.
+   *
+   * Override de la méthode parente pour corriger le bug de suppression.
+   */
+  public static function removeItemSubmit(&$form, FormStateInterface $form_state) {
+
+   /*  parent::removeItemSubmit($form, $form_state);
+    return; */
+
+    try {
+      $triggering_element = $form_state->getTriggeringElement();
+      if (!empty($triggering_element['#attributes']['data-entity-id'])) {
+        // Format expected: "media:123"
+        $id = $triggering_element['#attributes']['data-entity-id'];
+        $media_id = preg_replace('/^media:/', '', $id);
+
+        // Log relevant info without using print_r on large objects
+        \Drupal::logger('media_attributes_manager')->debug('Removing media ID: @id', ['@id' => $media_id]);
+
+        // Trouver le nom du champ
+        $field_name = '';
+        foreach ($triggering_element['#array_parents'] as $part) {
+          if (strpos($part, 'field_') === 0) {
+            $field_name = $part;
+            break;
+          }
+        }
+        \Drupal::logger('media_attributes_manager')->debug('Field name found: @field', ['@field' => $field_name]);
+
+        // Debug: Log the user input structure to understand the format
+        $user_input = $form_state->getUserInput();
+        if (isset($user_input[$field_name])) {
+          $debug_input = $user_input[$field_name];
+          // Convert possibly large arrays to readable format without full dump
+          if (isset($debug_input['target_id'])) {
+            \Drupal::logger('media_attributes_manager')->debug('User input format: target_id directly in field_name - Value: @value', [
+              '@value' => $debug_input['target_id']
+            ]);
+          }
+          if (isset($debug_input['current']['target_id'])) {
+            \Drupal::logger('media_attributes_manager')->debug('User input format: target_id in current subarray - Value: @value', [
+              '@value' => $debug_input['current']['target_id']
+            ]);
+          }
+
+          // Log the structure of the array
+          $structure = [];
+          foreach ($debug_input as $key => $value) {
+            if (is_array($value)) {
+              $structure[$key] = array_keys($value);
+            } else {
+              $structure[$key] = gettype($value);
+            }
+          }
+          \Drupal::logger('media_attributes_manager')->debug('User input structure: @structure', [
+            '@structure' => json_encode($structure)
+          ]);
+        } else {
+          \Drupal::logger('media_attributes_manager')->debug('User input does not contain field_name key');
+        }
+
+        // Récupérer l'entité
+        if (!empty($field_name)) {
+          $form_object = $form_state->getFormObject();
+          if (method_exists($form_object, 'getEntity')) {
+            $entity = $form_object->getEntity();
+
+            if ($entity && $entity->hasField($field_name)) {
+              // Récupération des valeurs actuelles
+              $current_values = $entity->get($field_name)->getValue();
+              \Drupal::logger('media_attributes_manager')->debug('Current values: @values', ['@values' => json_encode($current_values)]);
+
+              // Filtrer pour supprimer le média
+              $new_values = [];
+              foreach ($current_values as $delta => $value) {
+                if (!isset($value['target_id']) || $value['target_id'] != $media_id) {
+                  $new_values[] = $value;
+                }
+              }
+
+              // Mise à jour du champ
+              $entity->set($field_name, $new_values);
+              \Drupal::logger('media_attributes_manager')->debug('Updated entity field. New values: @values', ['@values' => json_encode($new_values)]);
+
+              // Mise à jour de l'état du formulaire
+              $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
+              $field_state = NestedArray::getValue($form_state->getStorage(), $parents);
+              if (!empty($field_state)) {
+                // Mettre à jour l'état du champ
+                NestedArray::setValue($form_state->getStorage(), $parents, $new_values);
+              }
+
+              // Mise à jour des valeurs de formulaire pour les champs target_id
+              $values = $form_state->getValues();
+              if (isset($values[$field_name])) {
+                // Log de la structure initiale
+                \Drupal::logger('media_attributes_manager')->debug('Form values structure for @field: @structure', [
+                  '@field' => $field_name,
+                  '@structure' => json_encode(array_keys($values[$field_name]))
+                ]);
+
+                // Cas 1: Format 'target_id' avec chaîne de caractères
+                if (isset($values[$field_name]['target_id']) && is_string($values[$field_name]['target_id'])) {
+                  $target_ids = explode(' ', $values[$field_name]['target_id']);
+                  $filtered_ids = [];
+                  foreach ($target_ids as $target_id) {
+                    $id_value = preg_replace('/^media:/', '', $target_id);
+                    if ($id_value != $media_id) {
+                      $filtered_ids[] = $target_id;
+                    }
+                  }
+                  $values[$field_name]['target_id'] = implode(' ', $filtered_ids);
+                }
+
+                // Cas 2: Format avec valeurs indexées numériquement
+                if (isset($values[$field_name]['target_id']) && is_array($values[$field_name]['target_id'])) {
+                  foreach ($values[$field_name]['target_id'] as $delta => $tid) {
+                    if ($tid == $media_id) {
+                      unset($values[$field_name]['target_id'][$delta]);
+                    }
+                  }
+                }
+
+                // Nettoyer les valeurs pour éliminer les espaces vides dans les arrays
+                if (isset($values[$field_name]['target_id']) && is_array($values[$field_name]['target_id'])) {
+                  $values[$field_name]['target_id'] = array_values($values[$field_name]['target_id']);
+                }
+
+                // Mettre à jour les valeurs dans le form_state
+                $form_state->setValues($values);
+
+                // Mettre à jour l'entité directement pour refléter les changements
+                $form_object = $form_state->getFormObject();
+                if (method_exists($form_object, 'getEntity')) {
+                  $entity = $form_object->getEntity();
+                  if ($entity && $entity->hasField($field_name)) {
+                    $field_items = $entity->get($field_name);
+
+                    // Recréer le champ avec les valeurs mises à jour
+                    $field_items->setValue([]);
+
+                    \Drupal::logger('media_attributes_manager')->debug('Resetting field @field values directly on entity', [
+                      '@field' => $field_name
+                    ]);
+
+                    // Extraire les IDs des médias restants depuis les valeurs user input
+                    $remaining_ids = [];
+
+                    // Récupérer depuis target_id si présent
+                    if (isset($user_input[$field_name]['target_id']) && !empty($user_input[$field_name]['target_id'])) {
+                      $target_ids = explode(' ', $user_input[$field_name]['target_id']);
+                      foreach ($target_ids as $target_id) {
+                        $clean_id = preg_replace('/^media:/', '', $target_id);
+                        if (!empty($clean_id) && is_numeric($clean_id)) {
+                          $remaining_ids[] = $clean_id;
+                        }
+                      }
+                    }
+
+                    // Ajouter les médias restants
+                    if (!empty($remaining_ids)) {
+                      foreach ($remaining_ids as $id) {
+                        $field_items->appendItem(['target_id' => $id]);
+                      }
+                      \Drupal::logger('media_attributes_manager')->debug('Appended @count items to field entity: @ids', [
+                        '@count' => count($remaining_ids),
+                        '@ids' => implode(',', $remaining_ids)
+                      ]);
+                    }
+                  }
+                }
+              }
+
+              // Mise à jour de l'entrée utilisateur
+              $user_input = $form_state->getUserInput();
+
+              // Mise à jour de target_id dans le format de chaîne avec espaces
+              if (isset($user_input[$field_name]['target_id'])) {
+                $target_ids = explode(' ', $user_input[$field_name]['target_id']);
+                $filtered_ids = [];
+                foreach ($target_ids as $target_id) {
+                  $id_value = preg_replace('/^media:/', '', $target_id);
+                  if ($id_value != $media_id) {
+                    $filtered_ids[] = $target_id;
+                  }
+                }
+                $user_input[$field_name]['target_id'] = implode(' ', $filtered_ids);
+                \Drupal::logger('media_attributes_manager')->debug('Updated target_id field: @value', [
+                  '@value' => $user_input[$field_name]['target_id']
+                ]);
+              }
+
+              // Mise à jour dans current/target_id si présent
+              if (isset($user_input[$field_name]['current']['target_id'])) {
+                $target_ids = explode(' ', $user_input[$field_name]['current']['target_id']);
+                $filtered_ids = [];
+                foreach ($target_ids as $target_id) {
+                  $id_value = preg_replace('/^media:/', '', $target_id);
+                  if ($id_value != $media_id) {
+                    $filtered_ids[] = $target_id;
+                  }
+                }
+                $user_input[$field_name]['current']['target_id'] = implode(' ', $filtered_ids);
+                \Drupal::logger('media_attributes_manager')->debug('Updated current/target_id field: @value', [
+                  '@value' => $user_input[$field_name]['current']['target_id']
+                ]);
+              }
+
+              // Essayer également le format traditionnel avec index numérique
+              foreach ($user_input[$field_name] as $delta => $value) {
+                if (is_numeric($delta) && isset($value['target_id']) && $value['target_id'] == $media_id) {
+                  unset($user_input[$field_name][$delta]);
+                  \Drupal::logger('media_attributes_manager')->debug('Removed indexed item @delta', ['@delta' => $delta]);
+                }
+              }
+
+              // Mettre à jour l'entrée utilisateur
+              $form_state->setUserInput($user_input);
+
+              // Recherche de l'ID de wrapper le plus approprié
+              $wrapper_id = '';
+
+              // Le wrapper du champ pour la mise à jour AJAX peut être dans différents formats
+              if (isset($triggering_element['#ajax']['wrapper'])) {
+                $wrapper_id = $triggering_element['#ajax']['wrapper'];
+              }
+
+              // Si on n'a pas de wrapper mais qu'on a le nom du champ
+              if (empty($wrapper_id) && !empty($field_name)) {
+                // Essayer différentes conventions de nommage pour le wrapper
+                $potential_wrappers = [
+                  'edit-' . str_replace('_', '-', $field_name) . '-wrapper',
+                  str_replace('_', '-', $field_name) . '--widget-wrapper',
+                  'edit-' . str_replace('_', '-', $field_name),
+                ];
+
+                foreach ($potential_wrappers as $potential_id) {
+                  // On ne peut pas vérifier l'existence du wrapper ici,
+                  // mais on peut utiliser le premier format qui correspond aux conventions
+                  $wrapper_id = $potential_id;
+                  break;
+                }
+              }
+
+              if (!empty($wrapper_id)) {
+                \Drupal::logger('media_attributes_manager')->debug('Using wrapper ID for AJAX update: @wrapper', [
+                  '@wrapper' => $wrapper_id
+                ]);
+
+                // Stocker le wrapper dans le storage du formulaire pour être utilisé par updateWidgetCallback
+                $storage = $form_state->getStorage();
+                $storage['ajax_update_wrapper'] = $wrapper_id;
+                $storage['media_removed'] = $media_id;
+                $storage['field_name'] = $field_name;
+                $form_state->setStorage($storage);
+              }
+
+              // Assurez-vous que le déclencheur contient les bonnes propriétés pour l'AJAX
+              if ($triggering_element) {
+                $ajax_settings = [
+                  'callback' => [static::class, 'updateWidgetCallback'],
+                  'wrapper' => $wrapper_id,
+                  'effect' => 'fade',
+                  'progress' => ['type' => 'throbber', 'message' => new TranslatableMarkup('Updating media list...')],
+                ];
+
+                if (empty($triggering_element['#ajax'])) {
+                  $triggering_element['#ajax'] = $ajax_settings;
+                } else {
+                  foreach ($ajax_settings as $key => $value) {
+                    $triggering_element['#ajax'][$key] = $value;
+                  }
+                }
+              }
+
+              // Forcer le rebuild complet du formulaire pour AJAX
+              $form_state->setRebuild(TRUE);
+
+              // Essayer de réindexer les éléments restants dans les tableaux pour éviter
+              // des trous dans les indices qui peuvent causer des problèmes d'affichage
+              if (method_exists($form_state, 'cleanValues')) {
+                // Cette méthode est interne à Drupal mais peut aider à nettoyer les valeurs
+                $form_state->cleanValues();
+              }
+
+              // Définir un message explicite mais plus discret
+              \Drupal::messenger()->addStatus(new TranslatableMarkup('Media item removed.'));
+
+              // Invalider les caches essentiels pour forcer le rafraîchissement du DOM
+              \Drupal::service('cache_tags.invalidator')->invalidateTags([
+                'media:' . $media_id,
+                'rendered',
+                'form:' . $form['#form_id']
+              ]);
+
+              // Log un message final pour confirmer que la suppression est terminée
+              \Drupal::logger('media_attributes_manager')->debug('Media removal complete. ID: @id', [
+                '@id' => $media_id
+              ]);
+
+              return;
+            }
+          }
+        }
+
+        // Approche standard avec la classe parente
+        // mais indique au formulaire qu'il doit être reconstruit
+        $form_state->setRebuild(TRUE);
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('media_attributes_manager')->error('Error in removeItemSubmit: @error', ['@error' => $e->getMessage()]);
+      \Drupal::messenger()->addMessage(new TranslatableMarkup('An error occurred while removing the media. Please try saving the form.'));
+      $form_state->setRebuild(TRUE);
+    }
+  }
+
+  /**
+   * Fonction utilitaire pour trouver les valeurs target_id dans un tableau.
+   */
+  protected static function findTargetIdInArray($array, $path = []) {
+    if (!is_array($array)) {
+      return NULL;
+    }
+
+    if (isset($array['target_id']) && is_string($array['target_id']) && !empty($array['target_id'])) {
+      \Drupal::logger('media_attributes_manager')->debug('Found target_id at path @path: @value', [
+        '@path' => implode('->', $path),
+        '@value' => $array['target_id'],
+      ]);
+      return $array['target_id'];
+    }
+
+    foreach ($array as $key => $value) {
+      if (is_array($value)) {
+        $result = static::findTargetIdInArray($value, array_merge($path, [$key]));
+        if ($result) {
+          return $result;
+        }
+      }
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Processe les boutons d'édition et de suppression en masse.
+   */
   public static function processBulkButtons(&$element, FormStateInterface $form_state, &$complete_form) {
     // Cas classique avec 'actions'
     if (isset($element['actions'])) {
@@ -534,7 +967,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         '#attributes' => ['class' => ['bulk-buttons-wrapper']],
         'bulk_edit' => [
           '#type' => 'button',
-          '#value' => \Drupal::translation()->translate('Bulk Edit'),
+          '#value' => new TranslatableMarkup('Bulk Edit'),
           '#attributes' => [
             'class' => ['bulk-edit-button'],
             'type' => 'button',
@@ -543,7 +976,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         ],
         'bulk_remove' => [
           '#type' => 'button',
-          '#value' => \Drupal::translation()->translate('Bulk Remove'),
+          '#value' => new TranslatableMarkup('Bulk Remove'),
           '#attributes' => [
             'class' => ['bulk-remove-button'],
             'type' => 'button',
@@ -560,7 +993,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         '#attributes' => ['class' => ['bulk-buttons-wrapper']],
         'bulk_edit' => [
           '#type' => 'button',
-          '#value' => \Drupal::translation()->translate('Bulk Edit'),
+          '#value' => new TranslatableMarkup('Bulk Edit'),
           '#attributes' => [
             'class' => ['bulk-edit-button'],
             'type' => 'button',
@@ -568,7 +1001,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         ],
         'bulk_remove' => [
           '#type' => 'button',
-          '#value' => \Drupal::translation()->translate('Bulk Remove'),
+          '#value' => new TranslatableMarkup('Bulk Remove'),
           '#attributes' => [
             'class' => ['bulk-remove-button'],
             'type' => 'button',
@@ -582,12 +1015,224 @@ $element['#attached']['library'][] = 'core/jquery.form';
     return $element;
   }
 
+  /**
+   * Méthode de rappel AJAX pour la mise à jour du widget.
+   */
   public static function updateWidgetCallback(array &$form, FormStateInterface $form_state) {
-    // Appelle la méthode parente qui gère la logique AJAX standard
+    // Récupère l'élément déclencheur
+    $triggering_element = $form_state->getTriggeringElement();
+
+    // Récupère l'ID du média qui a été supprimé
+    $removed_media_id = NULL;
+    $storage = $form_state->getStorage();
+    if (isset($storage['media_removed'])) {
+      $removed_media_id = $storage['media_removed'];
+      \Drupal::logger('media_attributes_manager')->debug('Located removed media ID in storage: @id', [
+        '@id' => $removed_media_id
+      ]);
+    }
+
+    // Si on n'a pas trouvé l'ID dans le storage, essayer de l'extraire du triggering_element
+    if (!$removed_media_id && !empty($triggering_element['#attributes']['data-entity-id'])) {
+      $id = $triggering_element['#attributes']['data-entity-id'];
+      $removed_media_id = preg_replace('/^media:/', '', $id);
+      \Drupal::logger('media_attributes_manager')->debug('Extracted removed media ID from trigger: @id', [
+        '@id' => $removed_media_id
+      ]);
+    }
+
+    // Find the field name from the trigger's parents
+    $field_name = '';
+    if (isset($triggering_element['#array_parents'])) {
+      foreach ($triggering_element['#array_parents'] as $parent) {
+        if (strpos($parent, 'field_') === 0) {
+          $field_name = $parent;
+          break;
+        }
+      }
+    }
+
+    // Si on n'a pas trouvé le field_name dans les parents, essayer de l'obtenir du storage
+    if (empty($field_name) && isset($storage['field_name'])) {
+      $field_name = $storage['field_name'];
+      \Drupal::logger('media_attributes_manager')->debug('Using field name from storage: @name', [
+        '@name' => $field_name
+      ]);
+    }
+
+    // Fonction pour filtrer récursivement un élément de formulaire pour supprimer un média
+    $filter_removed_media = NULL; // Initialize the variable before using it in the closure
+    $filter_removed_media = function (&$element) use ($removed_media_id, &$filter_removed_media) {
+      if (!$removed_media_id || !is_array($element)) {
+        return;
+      }
+
+      // Si c'est un conteneur d'items de médias
+      if (isset($element['items']) && is_array($element['items'])) {
+        foreach ($element['items'] as $key => &$item) {
+          // Vérifier si cet item correspond au média supprimé
+          if (isset($item['#attributes']['data-entity-id']) &&
+              $item['#attributes']['data-entity-id'] === 'media:' . $removed_media_id) {
+            unset($element['items'][$key]);
+            \Drupal::logger('media_attributes_manager')->debug('Removed media item from items array: @id', [
+              '@id' => $removed_media_id
+            ]);
+          }
+        }
+        // Réindexer le tableau après suppression
+        if (is_array($element['items'])) {
+          $element['items'] = array_values($element['items']);
+        }
+      }
+
+      // Vérifier et mettre à jour les chaînes target_id pour retirer le média supprimé
+      if (isset($element['target_id']) && isset($element['target_id']['#value'])) {
+        $target_ids = explode(' ', $element['target_id']['#value']);
+        $filtered_ids = [];
+        foreach ($target_ids as $tid) {
+          if ($tid !== 'media:' . $removed_media_id) {
+            $filtered_ids[] = $tid;
+          }
+        }
+        $element['target_id']['#value'] = implode(' ', $filtered_ids);
+        if (isset($element['target_id']['#attributes']['data-entity-ids'])) {
+          $element['target_id']['#attributes']['data-entity-ids'] = implode(' ', $filtered_ids);
+        }
+        \Drupal::logger('media_attributes_manager')->debug('Filtered target_id field: @ids', [
+          '@ids' => implode(' ', $filtered_ids)
+        ]);
+      }
+
+      // Instead of using Element::children() which requires proper render arrays,
+      // manually iterate through the element to find child elements
+      foreach ($element as $key => $child) {
+        // Skip property keys (those starting with #) and non-array values
+        if ($key[0] !== '#') {
+          if (is_array($child)) {
+            $filter_removed_media($element[$key]);
+          } else {
+            // If it's not an array but also not a property (doesn't start with #),
+            // it's likely an issue for Element::children(), so let's make it safe
+            // by ensuring it's handled as a property
+            $element['#' . $key] = $child;
+            unset($element[$key]);
+          }
+        }
+      }
+    };
+
+    if (!empty($field_name)) {
+      // Recherche des différents wrappers possibles du champ
+      $possible_wrappers = [
+        // Format standard pour les wrappers de champ
+        $field_name . '_wrapper',
+        // Format details
+        $field_name . '--wrapper',
+        // Format groupe de champs
+        'group-' . str_replace('_', '-', $field_name),
+      ];
+
+      foreach ($possible_wrappers as $wrapper_key) {
+        if (isset($form[$wrapper_key])) {
+          \Drupal::logger('media_attributes_manager')->debug('Found outer field wrapper: @wrapper', [
+            '@wrapper' => $wrapper_key
+          ]);
+
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          $filter_removed_media($form[$wrapper_key]);
+
+          return $form[$wrapper_key];
+        }
+      }
+
+      // Si on n'a pas trouvé de wrapper spécifique, essayer le conteneur de champ standard
+      if (isset($form[$field_name])) {
+        $field_container = $form[$field_name];
+
+        // Appliquer la fonction de filtrage pour supprimer le média du rendu
+        $filter_removed_media($field_container);
+
+        \Drupal::logger('media_attributes_manager')->debug('Returning standard field container for AJAX: @field', [
+          '@field' => $field_name
+        ]);
+
+        return $field_container;
+      }
+    }
+
+    // Recherche par ID directement dans le formulaire
+    if (!empty($field_name)) {
+      $wrapper_id = 'edit-' . str_replace('_', '-', $field_name) . '-wrapper';
+
+      foreach (Element::children($form) as $key) {
+        if (isset($form[$key]['#id']) && $form[$key]['#id'] == $wrapper_id) {
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          $filter_removed_media($form[$key]);
+
+          \Drupal::logger('media_attributes_manager')->debug('Found wrapper by ID: @id', ['@id' => $wrapper_id]);
+          return $form[$key];
+        }
+      }
+    }
+
+    // Original logic if we can't find the field container
+    $parents = [];
+    if ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_remove_')) {
+      // L'utilisateur a cliqué sur un bouton de suppression
+      $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
+
+      \Drupal::logger('media_attributes_manager')->debug('Remove button clicked. Parents: @parents', [
+        '@parents' => json_encode($parents)
+      ]);
+
+      // Pour un bouton de suppression, essayez de remonter plus haut dans la hiérarchie
+      // pour obtenir le conteneur complet plutôt que juste le widget
+      if (!empty($parents) && count($parents) >= 2) {
+        // Remontez d'un niveau supplémentaire
+        $container_parents = array_slice($parents, 0, -1);
+        $container = NestedArray::getValue($form, $container_parents);
+        if ($container) {
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          $filter_removed_media($container);
+
+          \Drupal::logger('media_attributes_manager')->debug('Using parent container for removal');
+          return $container;
+        }
+      }
+    }
+    elseif (!empty($triggering_element['#ajax']['event']) && $triggering_element['#ajax']['event'] == 'entity_browser_value_updated') {
+      $parents = array_slice($triggering_element['#array_parents'], 0, -1);
+    }
+    elseif ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_replace_')) {
+      $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
+    }
+    else {
+      // Cas générique, utiliser la méthode de détermination des parents précédente
+      $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
+    }
+
+    // Try to find the widget from parents
+    if (!empty($parents)) {
+      $widget_element = NestedArray::getValue($form, $parents);
+      if ($widget_element) {
+        // Appliquer la fonction de filtrage pour supprimer le média du rendu
+        $filter_removed_media($widget_element);
+
+        // Log for debugging
+        \Drupal::logger('media_attributes_manager')->debug('Widget found and updated via parents');
+        return $widget_element;
+      }
+    }
+
+    // Fallback to parent method as a last resort
     $element = parent::updateWidgetCallback($form, $form_state);
 
-    // Ici on peut ajouter notre logique spécifique si nécessaire
-    // Pour l'instant, on retourne simplement l'élément de la méthode parente
+    // Appliquer la fonction de filtrage pour supprimer le média du rendu
+    if ($element) {
+      $filter_removed_media($element);
+    }
+
+    \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback');
     return $element;
   }
 
