@@ -9,12 +9,14 @@ use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Field\FieldWidget;
+use Drupal\Core\Field\WidgetBase;
 use Drupal\Core\Render\Element;
 use Drupal\image\Entity\ImageStyle;
 use Drupal\Core\File\FileUrlGenerator;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\media\MediaInterface;
 
 /**
  * Plugin implementation of 'media_attributes_widget' widget.
@@ -122,8 +124,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               $attr_value = $value;
               if (is_array($value)) {
                 $attr_value = implode(', ', $value);
-              }
-              elseif (is_bool($value)) {
+              } elseif (is_bool($value)) {
                 $attr_value = $value ? 'true' : 'false';
               }
 
@@ -187,7 +188,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // Attach the bulk edit handler library for the "Bulk Edit" button
     $element['#attached']['library'][] = 'media_attributes_manager/bulk_edit_handler';
 
-$form['#attached']['library'][] = 'media_attributes_manager/masonry_grid';
+    $form['#attached']['library'][] = 'media_attributes_manager/masonry_grid';
 
     // Ajoute le process callback pour ajouter les boutons d'édition en masse.
     if (isset($element['widget']['entity_browser'])) {
@@ -217,7 +218,7 @@ $form['#attached']['library'][] = 'media_attributes_manager/masonry_grid';
     // et recuperer les fonctionnalites de Media Directories UI.
 
     $element['#attached']['library'][] = 'core/drupal.dialog.ajax';
-$element['#attached']['library'][] = 'core/jquery.form';
+    $element['#attached']['library'][] = 'core/jquery.form';
 
     $widget = $this;
     if ($widget->getSetting('entity_browser') === 'media_directories_modal') {
@@ -450,11 +451,9 @@ $element['#attached']['library'][] = 'core/jquery.form';
             if (is_array($value) && !empty($value)) {
               // Pour les références d'entités (ex: taxonomie), on affiche les labels
               $value = implode(', ', $value);
-            }
-            else if ($value === NULL) {
+            } else if ($value === NULL) {
               $value = '';
-            }
-            else if (is_bool($value)) {
+            } else if (is_bool($value)) {
               $value = $value ? 'Oui' : 'Non';
             }
 
@@ -521,8 +520,8 @@ $element['#attached']['library'][] = 'core/jquery.form';
             $thumbnail_title = $image_item->get('title')->getString();
           }
         } elseif ($media_type && $media_type->getSource()->getPluginId() === 'video_file') {
-            // Récupère le nom du champ fichier vidéo (généralement field_media_video_file)
-            $video_field = $this->getImageFieldName($media, 'file');
+          // Récupère le nom du champ fichier vidéo (généralement field_media_video_file)
+          $video_field = $this->getImageFieldName($media, 'file');
 
           // Récupère l'URL du fichier vidéo
           if ($media->hasField($video_field) && !$media->get($video_field)->isEmpty()) {
@@ -578,7 +577,6 @@ $element['#attached']['library'][] = 'core/jquery.form';
         $item['#attributes'] = $attributes;
         // maintenant recuperes les données du media
         $item['display']['#datas'] = $datas;
-
       }
     }
 
@@ -604,10 +602,253 @@ $element['#attached']['library'][] = 'core/jquery.form';
    * Submit handler pour Bulk Remove.
    */
   public static function bulkRemoveSelected(array &$form, FormStateInterface $form_state) {
-    // À compléter : supprimer les médias sélectionnés.
-    // Vous pouvez utiliser $form_state->getUserInput() pour récupérer les IDs sélectionnés.
-    // Puis, retirez-les de $form_state ou du field item list.
-    \Drupal::messenger()->addMessage(\Drupal::translation()->translate('Bulk remove not yet implemented.'));
+    $triggering_element = $form_state->getTriggeringElement();
+    $user_input = $form_state->getUserInput();
+    $selected_media_ids = [];
+    $field_name = '';
+
+    \Drupal::logger('media_attributes_manager')->debug('Bulk remove triggered');
+
+    // Récupérer le nom du champ depuis le bouton déclencheur
+    if (!empty($triggering_element['#attributes']['data-field-name'])) {
+      $field_name = $triggering_element['#attributes']['data-field-name'];
+      \Drupal::logger('media_attributes_manager')->debug('Field name from button attribute: @field', [
+        '@field' => $field_name
+      ]);
+    }
+    // Si pas trouvé, essayer de l'identifier à partir des parents du bouton
+    else {
+      // Analyser les parents du bouton pour trouver le nom du champ
+      if (!empty($triggering_element['#array_parents'])) {
+        foreach ($triggering_element['#array_parents'] as $parent) {
+          if (strpos($parent, 'field_') === 0) {
+            $field_name = $parent;
+            break;
+          }
+        }
+        \Drupal::logger('media_attributes_manager')->debug('Field name from array parents: @field', [
+          '@field' => $field_name
+        ]);
+      }
+    }
+
+    // Si on n'a toujours pas trouvé le nom du champ, essayer de le déduire du nom du bouton
+    if (empty($field_name) && !empty($triggering_element['#name'])) {
+      $button_name = $triggering_element['#name'];
+      if (strpos($button_name, 'bulk_remove_field_') === 0) {
+        $field_name = substr($button_name, strlen('bulk_remove_'));
+        \Drupal::logger('media_attributes_manager')->debug('Field name from button name: @field', [
+          '@field' => $field_name
+        ]);
+      }
+    }
+
+    // Si on n'a pas pu identifier le champ, sortir avec un message d'erreur
+    if (empty($field_name)) {
+      \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for bulk removal."));
+      return;
+    }
+
+    // Rechercher toutes les cases à cocher sélectionnées dans la structure du formulaire
+    if (isset($form[$field_name]['widget']['current']['items'])) {
+      foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
+        $item = $form[$field_name]['widget']['current']['items'][$delta];
+
+        // Vérifier si la checkbox est cochée
+        $checked = FALSE;
+        if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
+          $checked = TRUE;
+        }
+        // Vérifier dans les valeurs soumises par l'utilisateur
+        elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
+          $checked = TRUE;
+        }
+
+        // Si la checkbox est cochée, extraire l'ID du média
+        if ($checked && !empty($item['#attributes']['data-entity-id'])) {
+          $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
+          if (!empty($media_id)) {
+            $selected_media_ids[] = $media_id;
+          }
+        }
+      }
+    }
+
+    // Si aucun média sélectionné, essayer une approche alternative en recherchant dans l'input utilisateur
+    if (empty($selected_media_ids) && isset($user_input[$field_name])) {
+      $field_input = $user_input[$field_name];
+
+      // Parcourir récursivement l'input pour trouver les checkboxes des médias
+      $findCheckboxes = function ($input, &$ids) use (&$findCheckboxes) {
+        if (!is_array($input)) {
+          return;
+        }
+
+        foreach ($input as $key => $value) {
+          // Vérifie les clés qui pourraient correspondre à des checkboxes de médias
+          if (is_string($key) && strpos($key, 'select_checkbox_') === 0 && $value == '1') {
+            $media_id = substr($key, strlen('select_checkbox_'));
+            if (is_numeric($media_id)) {
+              $ids[] = $media_id;
+            }
+          }
+          // Vérifie les attributs data-entity-id et data-row-id pour les médias sélectionnés
+          elseif (is_string($key) && $key === 'data-entity-id' && strpos($value, 'media:') === 0) {
+            $media_id = preg_replace('/^media:/', '', $value);
+            if (is_numeric($media_id)) {
+              $ids[] = $media_id;
+            }
+          }
+          // Recherche récursive dans les tableaux
+          elseif (is_array($value)) {
+            $findCheckboxes($value, $ids);
+          }
+        }
+      };
+
+      $findCheckboxes($field_input, $selected_media_ids);
+    }
+
+    // Si on n'a toujours aucun média sélectionné, utiliser tous les médias du champ
+    // comme solution de dernier recours (peut être utile pour un "Remove All")
+    if (empty($selected_media_ids) && isset($user_input[$field_name]['target_id'])) {
+      $target_ids_string = $user_input[$field_name]['target_id'];
+      $target_ids = explode(' ', $target_ids_string);
+
+      foreach ($target_ids as $target_id) {
+        $media_id = preg_replace('/^media:/', '', $target_id);
+        if (is_numeric($media_id)) {
+          $selected_media_ids[] = $media_id;
+          \Drupal::logger('media_attributes_manager')->debug('Found media ID from target_id: @id', [
+            '@id' => $media_id
+          ]);
+        }
+      }
+    }
+
+    // Si aucun média à supprimer, afficher un message et sortir
+    if (empty($selected_media_ids)) {
+      \Drupal::messenger()->addStatus(new TranslatableMarkup('No media items selected for removal.'));
+      return;
+    }
+
+    \Drupal::logger('media_attributes_manager')->debug('Selected media IDs for bulk removal: @ids', [
+      '@ids' => implode(', ', $selected_media_ids)
+    ]);
+
+    // Récupérer l'entité parent pour accéder au champ directement
+    $form_object = $form_state->getFormObject();
+    $entity = NULL;
+    if (method_exists($form_object, 'getEntity')) {
+      $entity = $form_object->getEntity();
+    }
+
+    // Déterminer le wrapper AJAX pour la mise à jour de l'interface
+    $field_wrapper_id = 'edit-' . str_replace('_', '-', $field_name) . '-wrapper';
+
+    // Mettre à jour le wrapper AJAX dans le bouton déclencheur si nécessaire
+    if (isset($triggering_element['#ajax'])) {
+      $triggering_element['#ajax']['wrapper'] = $field_wrapper_id;
+    }
+
+    // Stocker les IDs de médias supprimés pour le traitement AJAX
+    $storage = $form_state->getStorage();
+    $storage['media_removed_bulk'] = $selected_media_ids;
+    $storage['field_name'] = $field_name;
+    $form_state->setStorage($storage);
+
+    // Si nous avons accès à l'entité, mettre à jour directement ses valeurs de champ
+    if ($entity && $entity->hasField($field_name)) {
+      $field_items = $entity->get($field_name);
+      $current_values = $field_items->getValue();
+      $updated_values = [];
+
+      foreach ($current_values as $delta => $value) {
+        if (isset($value['target_id']) && !in_array($value['target_id'], $selected_media_ids)) {
+          $updated_values[] = $value;
+        }
+      }
+
+      // Mettre à jour le champ de l'entité
+      $entity->set($field_name, $updated_values);
+      \Drupal::logger('media_attributes_manager')->debug('Updated entity field @field: removed @count media items', [
+        '@field' => $field_name,
+        '@count' => count($current_values) - count($updated_values)
+      ]);
+    }
+
+    // Mise à jour des valeurs dans l'entrée utilisateur pour les rendre persistantes
+    // Format 1: Chaîne dans target_id avec des IDs séparés par des espaces
+    if (isset($user_input[$field_name]['target_id'])) {
+      $current_target_ids_string = $user_input[$field_name]['target_id'];
+      $current_target_ids = explode(' ', $current_target_ids_string);
+      $updated_target_ids = [];
+
+      foreach ($current_target_ids as $target_id) {
+        $media_id = preg_replace('/^media:/', '', $target_id);
+        if (!in_array($media_id, $selected_media_ids)) {
+          $updated_target_ids[] = $target_id;
+        }
+      }
+
+      // Mettre à jour la valeur target_id dans l'entrée utilisateur
+      $user_input[$field_name]['target_id'] = implode(' ', $updated_target_ids);
+      \Drupal::logger('media_attributes_manager')->debug('Updated user input target_id: @value', [
+        '@value' => $user_input[$field_name]['target_id']
+      ]);
+    }
+
+    // Format 2: Format avec current/target_id
+    if (isset($user_input[$field_name]['current']['target_id'])) {
+      $current_target_ids_string = $user_input[$field_name]['current']['target_id'];
+      $current_target_ids = explode(' ', $current_target_ids_string);
+      $updated_target_ids = [];
+
+      foreach ($current_target_ids as $target_id) {
+        $media_id = preg_replace('/^media:/', '', $target_id);
+        if (!in_array($media_id, $selected_media_ids)) {
+          $updated_target_ids[] = $target_id;
+        }
+      }
+
+      // Mettre à jour la valeur target_id dans l'entrée utilisateur
+      $user_input[$field_name]['current']['target_id'] = implode(' ', $updated_target_ids);
+      \Drupal::logger('media_attributes_manager')->debug('Updated current/target_id: @value', [
+        '@value' => $user_input[$field_name]['current']['target_id']
+      ]);
+    }
+
+    // Format 3: Valeurs indexées numériquement dans target_id
+    if (isset($user_input[$field_name]['target_id']) && is_array($user_input[$field_name]['target_id'])) {
+      foreach ($user_input[$field_name]['target_id'] as $delta => $tid) {
+        if (in_array($tid, $selected_media_ids)) {
+          unset($user_input[$field_name]['target_id'][$delta]);
+        }
+      }
+      // Réindexer le tableau
+      if (is_array($user_input[$field_name]['target_id'])) {
+        $user_input[$field_name]['target_id'] = array_values($user_input[$field_name]['target_id']);
+      }
+    }
+
+    // Mettre à jour l'entrée utilisateur
+    $form_state->setUserInput($user_input);
+
+    // Forcer le rebuild du formulaire pour AJAX
+    $form_state->setRebuild(TRUE);
+
+    // Message de confirmation
+    $count = count($selected_media_ids);
+    $message = \Drupal::translation()->formatPlural(
+      $count,
+      'One media item has been removed.',
+      '@count media items have been removed.'
+    );
+    \Drupal::messenger()->addStatus($message);
+
+    \Drupal::logger('media_attributes_manager')->debug('Updated target_id value: @value', [
+      '@value' => $user_input[$field_name]['target_id']
+    ]);
   }
 
   /**
@@ -616,9 +857,6 @@ $element['#attached']['library'][] = 'core/jquery.form';
    * Override de la méthode parente pour corriger le bug de suppression.
    */
   public static function removeItemSubmit(&$form, FormStateInterface $form_state) {
-
-   /*  parent::removeItemSubmit($form, $form_state);
-    return; */
 
     try {
       $triggering_element = $form_state->getTriggeringElement();
@@ -920,8 +1158,7 @@ $element['#attached']['library'][] = 'core/jquery.form';
         // mais indique au formulaire qu'il doit être reconstruit
         $form_state->setRebuild(TRUE);
       }
-    }
-    catch (\Exception $e) {
+    } catch (\Exception $e) {
       \Drupal::logger('media_attributes_manager')->error('Error in removeItemSubmit: @error', ['@error' => $e->getMessage()]);
       \Drupal::messenger()->addMessage(new TranslatableMarkup('An error occurred while removing the media. Please try saving the form.'));
       $form_state->setRebuild(TRUE);
@@ -960,30 +1197,66 @@ $element['#attached']['library'][] = 'core/jquery.form';
    * Processe les boutons d'édition et de suppression en masse.
    */
   public static function processBulkButtons(&$element, FormStateInterface $form_state, &$complete_form) {
+    $field_name = '';
+    $field_parents = [];
+
+    // Identifier le nom du champ et les parents à partir de l'élément actuel
+    if (isset($element['#array_parents']) && is_array($element['#array_parents'])) {
+      foreach ($element['#array_parents'] as $parent) {
+        if (strpos($parent, 'field_') === 0) {
+          $field_name = $parent;
+          $field_parents = $element['#parents'];
+          break;
+        }
+      }
+    }
+
+    // Créer un ID unique pour le wrapper des boutons
+    $wrapper_id = $field_name ? "edit-" . str_replace('_', '-', $field_name) . '-wrapper' : '';
+
+    // Configuration commune pour le bouton "Bulk Remove"
+    $bulk_remove_config = [
+      '#type' => 'submit',
+      '#value' => new TranslatableMarkup('Bulk Remove'),
+      '#name' => 'bulk_remove_' . ($field_name ? $field_name : 'button'),
+      '#button_type' => 'danger',
+      '#attributes' => [
+        'class' => ['bulk-remove-button', 'button--danger'],
+        'data-action' => 'bulk-remove',
+        'data-field-name' => $field_name,
+      ],
+      '#executes_submit_callback' => TRUE,
+      '#submit' => [[static::class, 'bulkRemoveSelected']],
+      '#limit_validation_errors' => [],
+      '#ajax' => [
+        'callback' => [static::class, 'updateWidgetCallback'],
+        'wrapper' => $wrapper_id,
+        'progress' => [
+          'type' => 'throbber',
+          'message' => new TranslatableMarkup('Removing selected media...'),
+        ],
+      ],
+    ];
+
+    // Configuration commune pour le bouton "Bulk Edit"
+    $bulk_edit_config = [
+      '#type' => 'button', // Reste un bouton simple car géré par JS
+      '#value' => new TranslatableMarkup('Bulk Edit'),
+      '#attributes' => [
+        'class' => ['bulk-edit-button'],
+        'type' => 'button',
+        'data-bulk-edit' => 'true',
+        'data-field-name' => $field_name,
+      ],
+    ];
+
     // Cas classique avec 'actions'
     if (isset($element['actions'])) {
       $element['actions']['bulk_buttons_wrapper'] = [
         '#type' => 'container',
         '#attributes' => ['class' => ['bulk-buttons-wrapper']],
-        'bulk_edit' => [
-          '#type' => 'button',
-          '#value' => new TranslatableMarkup('Bulk Edit'),
-          '#attributes' => [
-            'class' => ['bulk-edit-button'],
-            'type' => 'button',
-            'data-bulk-edit' => 'true', // Attribut pour identifier le bouton
-          ],
-        ],
-        'bulk_remove' => [
-          '#type' => 'button',
-          '#value' => new TranslatableMarkup('Bulk Remove'),
-          '#attributes' => [
-            'class' => ['bulk-remove-button'],
-            'type' => 'button',
-          ],
-          '#submit' => [[static::class, 'bulkRemoveSelected']],
-          '#limit_validation_errors' => [],
-        ],
+        'bulk_edit' => $bulk_edit_config,
+        'bulk_remove' => $bulk_remove_config,
       ];
     }
     // Cas où les boutons sont au même niveau que open_modal
@@ -991,24 +1264,8 @@ $element['#attached']['library'][] = 'core/jquery.form';
       $element['entity_browser']['bulk_buttons_wrapper'] = [
         '#type' => 'container',
         '#attributes' => ['class' => ['bulk-buttons-wrapper']],
-        'bulk_edit' => [
-          '#type' => 'button',
-          '#value' => new TranslatableMarkup('Bulk Edit'),
-          '#attributes' => [
-            'class' => ['bulk-edit-button'],
-            'type' => 'button',
-          ],
-        ],
-        'bulk_remove' => [
-          '#type' => 'button',
-          '#value' => new TranslatableMarkup('Bulk Remove'),
-          '#attributes' => [
-            'class' => ['bulk-remove-button'],
-            'type' => 'button',
-          ],
-          '#submit' => ['::bulkRemoveSelected'],
-          '#limit_validation_errors' => [],
-        ],
+        'bulk_edit' => $bulk_edit_config,
+        'bulk_remove' => $bulk_remove_config,
       ];
     }
 
@@ -1022,9 +1279,18 @@ $element['#attached']['library'][] = 'core/jquery.form';
     // Récupère l'élément déclencheur
     $triggering_element = $form_state->getTriggeringElement();
 
-    // Récupère l'ID du média qui a été supprimé
-    $removed_media_id = NULL;
+    // Vérifier s'il s'agit d'une suppression en masse
+    $bulk_removed_media_ids = [];
     $storage = $form_state->getStorage();
+    if (isset($storage['media_removed_bulk']) && is_array($storage['media_removed_bulk'])) {
+      $bulk_removed_media_ids = $storage['media_removed_bulk'];
+      \Drupal::logger('media_attributes_manager')->debug('Found bulk removed media IDs: @ids', [
+        '@ids' => implode(', ', $bulk_removed_media_ids)
+      ]);
+    }
+
+    // Récupère l'ID du média qui a été supprimé (cas d'une suppression simple)
+    $removed_media_id = NULL;
     if (isset($storage['media_removed'])) {
       $removed_media_id = $storage['media_removed'];
       \Drupal::logger('media_attributes_manager')->debug('Located removed media ID in storage: @id', [
@@ -1060,44 +1326,85 @@ $element['#attached']['library'][] = 'core/jquery.form';
       ]);
     }
 
-    // Fonction pour filtrer récursivement un élément de formulaire pour supprimer un média
+    // Fonction pour filtrer récursivement un élément de formulaire pour supprimer un ou plusieurs médias
     $filter_removed_media = NULL; // Initialize the variable before using it in the closure
-    $filter_removed_media = function (&$element) use ($removed_media_id, &$filter_removed_media) {
-      if (!$removed_media_id || !is_array($element)) {
+    $filter_removed_media = function (&$element) use ($removed_media_id, $bulk_removed_media_ids, &$filter_removed_media) {
+      // Soit on a un ID simple, soit on a des IDs en masse
+      $has_removals = ($removed_media_id || !empty($bulk_removed_media_ids));
+
+      if (!$has_removals || !is_array($element)) {
         return;
       }
 
       // Si c'est un conteneur d'items de médias
       if (isset($element['items']) && is_array($element['items'])) {
+        $removed_count = 0;
         foreach ($element['items'] as $key => &$item) {
-          // Vérifier si cet item correspond au média supprimé
-          if (isset($item['#attributes']['data-entity-id']) &&
-              $item['#attributes']['data-entity-id'] === 'media:' . $removed_media_id) {
+          $should_remove = FALSE;
+
+          // Vérification pour suppression simple
+          if (
+            $removed_media_id &&
+            isset($item['#attributes']['data-entity-id']) &&
+            $item['#attributes']['data-entity-id'] === 'media:' . $removed_media_id
+          ) {
+            $should_remove = TRUE;
+          }
+
+          // Vérification pour suppression en masse
+          if (
+            !empty($bulk_removed_media_ids) &&
+            isset($item['#attributes']['data-entity-id'])
+          ) {
+            $item_media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
+            if (in_array($item_media_id, $bulk_removed_media_ids)) {
+              $should_remove = TRUE;
+            }
+          }
+
+          if ($should_remove) {
             unset($element['items'][$key]);
-            \Drupal::logger('media_attributes_manager')->debug('Removed media item from items array: @id', [
-              '@id' => $removed_media_id
-            ]);
+            $removed_count++;
           }
         }
+
         // Réindexer le tableau après suppression
-        if (is_array($element['items'])) {
+        if (is_array($element['items']) && $removed_count > 0) {
           $element['items'] = array_values($element['items']);
+          \Drupal::logger('media_attributes_manager')->debug('Removed @count media items from items array', [
+            '@count' => $removed_count
+          ]);
         }
       }
 
-      // Vérifier et mettre à jour les chaînes target_id pour retirer le média supprimé
+      // Vérifier et mettre à jour les chaînes target_id pour retirer les médias supprimés
       if (isset($element['target_id']) && isset($element['target_id']['#value'])) {
         $target_ids = explode(' ', $element['target_id']['#value']);
         $filtered_ids = [];
         foreach ($target_ids as $tid) {
-          if ($tid !== 'media:' . $removed_media_id) {
+          $media_id = preg_replace('/^media:/', '', $tid);
+          $should_keep = TRUE;
+
+          // Vérification pour suppression simple
+          if ($removed_media_id && $media_id === $removed_media_id) {
+            $should_keep = FALSE;
+          }
+
+          // Vérification pour suppression en masse
+          if (!empty($bulk_removed_media_ids) && in_array($media_id, $bulk_removed_media_ids)) {
+            $should_keep = FALSE;
+          }
+
+          if ($should_keep) {
             $filtered_ids[] = $tid;
           }
         }
+
         $element['target_id']['#value'] = implode(' ', $filtered_ids);
         if (isset($element['target_id']['#attributes']['data-entity-ids'])) {
           $element['target_id']['#attributes']['data-entity-ids'] = implode(' ', $filtered_ids);
         }
+
         \Drupal::logger('media_attributes_manager')->debug('Filtered target_id field: @ids', [
           '@ids' => implode(' ', $filtered_ids)
         ]);
@@ -1199,14 +1506,11 @@ $element['#attached']['library'][] = 'core/jquery.form';
           return $container;
         }
       }
-    }
-    elseif (!empty($triggering_element['#ajax']['event']) && $triggering_element['#ajax']['event'] == 'entity_browser_value_updated') {
+    } elseif (!empty($triggering_element['#ajax']['event']) && $triggering_element['#ajax']['event'] == 'entity_browser_value_updated') {
       $parents = array_slice($triggering_element['#array_parents'], 0, -1);
-    }
-    elseif ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_replace_')) {
+    } elseif ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_replace_')) {
       $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
-    }
-    else {
+    } else {
       // Cas générique, utiliser la méthode de détermination des parents précédente
       $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
     }
@@ -1235,5 +1539,4 @@ $element['#attached']['library'][] = 'core/jquery.form';
     \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback');
     return $element;
   }
-
 }
