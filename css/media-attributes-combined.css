@@ -111,15 +111,17 @@
   border: 1px solid #ccc;
   border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  padding: 10px;
+  padding: 8px;
   min-width: 200px;
   max-width: 300px;
-  font-size: 12px;
+  font-size: 10px; /* Smaller font size */
   color: #333;
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
   margin-top: 5px;
+  max-height: 200px; /* Set maximum height */
+  overflow-y: auto; /* Add vertical scrollbar */
 }
 
 /* Conteneur de l'image avec tooltip - plus flexible */
@@ -143,17 +145,19 @@
   width: 100% !important; /* Prend toute la largeur */
   min-width: 100% !important;
   max-width: 100% !important;
-  height: calc(100% - 40px) !important; /* Hauteur ajustée pour laisser l'espace aux boutons */
+  max-height: calc(100% - 50px) !important; /* Reduced height to allow space for scrolling */
   background-color: rgba(0, 0, 0, 0.85);
   color: white;
   z-index: 100;
-  overflow: auto;
-  padding: 12px;
+  overflow-y: auto; /* Ensure vertical scrollbar appears when needed */
+  overflow-x: hidden; /* Hide horizontal scrollbar */
+  padding: 8px; /* Reduced padding */
   box-sizing: border-box;
   border-radius: 0 0 4px 4px; /* Coins arrondis uniquement en bas */
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
   margin: 0 !important;
   border-top: none; /* Pas de bordure en haut pour une apparence intégrée */
+  font-size: 10px; /* Smaller font size for overlay tooltip */
 }
 
 /* Afficher le tooltip au survol */
@@ -165,33 +169,37 @@
 .media-tooltip-header {
   font-weight: bold;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-  padding-bottom: 8px;
-  margin-bottom: 10px;
-  font-size: 14px;
+  padding-bottom: 6px; /* Reduced padding */
+  margin-bottom: 8px; /* Reduced margin */
+  font-size: 11px; /* Smaller header font */
   text-align: center;
 }
 
-/* Style du contenu du tooltip - sans hauteur maximale fixe */
+/* Style du contenu du tooltip - avec scroll vertical */
 .media-tooltip-content {
-  overflow-y: auto;
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Hide horizontal scrollbar */
   padding-right: 5px;
-  max-height: none; /* Suppression de la hauteur max fixe */
+  max-height: none; /* Remove max height as parent handles scrolling */
+  font-size: 9px; /* Smaller content font */
 }
 
 /* Amélioration du style des attributs pour une meilleure lisibilité */
 .media-tooltip-attribute {
-  margin-bottom: 6px;
-  line-height: 1.4;
+  margin-bottom: 4px; /* Reduced margin for compactness */
+  line-height: 1.3; /* Tighter line height */
   display: flex;
   flex-wrap: wrap; /* Permettre le retour à la ligne pour les petits écrans */
+  font-size: 9px; /* Smaller font for attributes */
 }
 
 /* Ajustement des labels pour qu'ils prennent moins de place */
 .media-tooltip-label {
   font-weight: bold;
-  margin-right: 5px;
+  margin-right: 4px; /* Reduced margin */
   flex-basis: 35%; /* Légèrement réduit */
   color: rgba(255, 255, 255, 0.8);
+  font-size: 9px; /* Smaller label font */
 }
 
 /* Plus d'espace pour les valeurs */
@@ -199,6 +207,7 @@
   flex-grow: 1;
   flex-basis: 60%;
   word-break: break-word;
+  font-size: 9px; /* Smaller value font */
 }
 
 /* Assurer que l'image/vidéo reste bien dimensionnée */
@@ -219,6 +228,56 @@
 .media-item-with-tooltip:hover .media-custom-attributes-tooltip {
   display: block;
   animation: tooltipFadeIn 0.2s ease-in-out;
+}
+
+/* Custom scrollbar styling for webkit browsers */
+.media-custom-attributes-tooltip::-webkit-scrollbar {
+  width: 6px;
+}
+
+.media-custom-attributes-tooltip::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.media-custom-attributes-tooltip::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+}
+
+.media-custom-attributes-tooltip::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* For Firefox */
+.media-custom-attributes-tooltip {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.1);
+}
+
+/* Indicate when content is scrollable */
+.media-custom-attributes-tooltip.has-scroll::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+  border-radius: 0 0 4px 4px;
+}
+
+/* Compact spacing for tooltip items when many are present */
+.media-custom-attributes-tooltip.compact .media-tooltip-attribute {
+  margin-bottom: 2px;
+  line-height: 1.2;
+}
+
+.media-custom-attributes-tooltip.compact .media-tooltip-header {
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+  font-size: 10px;
 }
 
 /*
@@ -394,7 +453,7 @@
 
 /* Ajustement du conteneur du sélecteur de valeurs */
 .taxonomy-values-selector-wrapper {
-  margin-top: 1.4rem !important; /* Réduit de 1.45rem pour aligner verticalement avec le champ d'autocomplétion */
+  margin-top: 1.4rem !important; /* Réduits de 1.45rem pour aligner verticalement avec le champ d'autocomplétion */
   width: 6em!important;
   flex-grow: 1 !important;
 }

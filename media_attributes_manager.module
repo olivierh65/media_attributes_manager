@@ -11,6 +11,7 @@ use Drupal\Core\Ajax\OpenModalDialogCommand;
 use Drupal\Core\Ajax\CloseModalDialogCommand;
 use Drupal\Core\Ajax\AlertCommand; // Optionnel, pour les erreurs
 use Drupal\Core\Render\Element; // Pour accéder à Element::children()
+use Drupal\Core\Routing\RouteMatchInterface;
 
 function media_attributes_manager_theme($existing, $type, $theme, $path) {
   return [
@@ -127,6 +128,38 @@ function _media_attributes_manager_process_form_element(&$element, $parent = '')
     // Traitement récursif des éléments enfants
     if (is_array($current) && !empty(Element::children($current))) {
       _media_attributes_manager_process_form_element($current, $key);
+    }
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function media_attributes_manager_cron() {
+  // Process EXIF field creation queue during cron runs
+  $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
+  $processed = $queue_manager->processQueue(5); // Process up to 5 items per cron run
+  
+  if ($processed > 0) {
+    \Drupal::logger('media_attributes_manager')->info('Processed @count EXIF field creation queue item(s) during cron.', [
+      '@count' => $processed,
+    ]);
+  }
+}
+
+/**
+ * Implements hook_page_attachments().
+ */
+function media_attributes_manager_page_attachments(array &$attachments) {
+  // Check if we're on the admin settings page and if fields need to be created
+  $current_path = \Drupal::service('path.current')->getPath();
+  if ($current_path == '/admin/config/media/media-attributes-manager') {
+    $config = \Drupal::config('media_attributes_manager.settings');
+    
+    if ($config->get('auto_create_fields') && $config->get('fields_to_create')) {
+      // Get the ExifFieldManager service and create fields
+      $exif_field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
+      $exif_field_manager->createExifFields();
     }
   }
 }

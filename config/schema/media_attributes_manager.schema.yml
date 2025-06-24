@@ -1,0 +1,86 @@
+media_attributes_manager.settings:
+  type: config_object
+  label: 'Media Attributes Manager settings'
+  mapping:
+    enable_exif_feature:
+      type: boolean
+      label: 'Enable EXIF feature'
+    auto_create_fields:
+      type: boolean
+      label: 'Auto create fields'
+    fields_to_create:
+      type: boolean
+      label: 'Fields to create flag'
+    exif_data_selection:
+      type: mapping
+      label: 'EXIF data selection settings'
+      mapping:
+        computed_height:
+          type: boolean
+          label: 'Computed height'
+        computed_width:
+          type: boolean
+          label: 'Computed width'
+        make:
+          type: boolean
+          label: 'Camera make'
+        model:
+          type: boolean
+          label: 'Camera model'
+        orientation:
+          type: boolean
+          label: 'Orientation'
+        software:
+          type: boolean
+          label: 'Software'
+        copyright:
+          type: boolean
+          label: 'Copyright'
+        artist:
+          type: boolean
+          label: 'Artist'
+        datetime_original:
+          type: boolean
+          label: 'Date/Time original'
+        datetime_digitized:
+          type: boolean
+          label: 'Date/Time digitized'
+        exif_image_width:
+          type: boolean
+          label: 'EXIF image width'
+        exif_image_length:
+          type: boolean
+          label: 'EXIF image length'
+        exposure:
+          type: boolean
+          label: 'Exposure time'
+        aperture:
+          type: boolean
+          label: 'Aperture'
+        iso:
+          type: boolean
+          label: 'ISO speed'
+        focal_length:
+          type: boolean
+          label: 'Focal length'
+        gps_latitude:
+          type: boolean
+          label: 'GPS latitude'
+        gps_longitude:
+          type: boolean
+          label: 'GPS longitude'
+        gps_altitude:
+          type: boolean
+          label: 'GPS altitude'
+        gps_date:
+          type: boolean
+          label: 'GPS date/time'
+        gps_coordinates:
+          type: boolean
+          label: 'GPS coordinates'
+    exif_enabled_media_types:
+      type: sequence
+      label: 'Enabled media types for EXIF processing'
+      sequence:
+        type: string
+        label: 'Media type ID'

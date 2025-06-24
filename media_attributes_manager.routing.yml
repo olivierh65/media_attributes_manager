@@ -23,3 +23,13 @@ media_attributes_manager.taxonomy_values:
     _permission: 'access media overview'
   options:
     _admin_route: TRUE
+
+media_attributes_manager.settings:
+  path: '/admin/config/media/media-attributes-manager'
+  defaults:
+    _form: '\Drupal\media_attributes_manager\Form\MediaAttributesSettingsForm'
+    _title: 'Media Attributes Manager Settings'
+  requirements:
+    _permission: 'administer site configuration'
+  options:
+    _admin_route: TRUE

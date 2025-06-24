@@ -18,6 +18,20 @@
         $media.on('mouseenter', function() {
           // On peut ajouter des effets ou du traitement supplémentaire ici
           $media.addClass('tooltip-active');
+          
+          // Detect if tooltip content is scrollable and add appropriate class
+          const $tooltip = $media.find('.media-custom-attributes-tooltip');
+          if ($tooltip.length) {
+            // Small delay to ensure tooltip is rendered
+            setTimeout(function() {
+              const tooltipElement = $tooltip[0];
+              if (tooltipElement.scrollHeight > tooltipElement.clientHeight) {
+                $tooltip.addClass('has-scroll');
+              } else {
+                $tooltip.removeClass('has-scroll');
+              }
+            }, 50);
+          }
         });
         
         $media.on('mouseleave', function() {

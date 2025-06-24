@@ -73,8 +73,7 @@
       {% endif %}
 
       {# Tooltip pour afficher les attributs personnalisés du média #}
-      {# Tooltip pour afficher les attributs personnalisés du média #}
-      <div class="media-custom-attributes-tooltip">
+      <div class="media-custom-attributes-tooltip{% if displayed_fields|length > 5 %} compact{% endif %}">
         <div class="media-tooltip-header">{{ datas.media_title }}</div>
         <div class="media-tooltip-content">
           {% set displayed_fields = [] %}

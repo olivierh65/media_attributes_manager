@@ -1250,6 +1250,34 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       ],
     ];
 
+    // Configuration pour le bouton "Apply EXIF"
+    $config = \Drupal::config('media_attributes_manager.settings');
+    $apply_exif_config = [];
+    if ($config->get('enable_exif_feature') !== FALSE) {
+      $apply_exif_config = [
+        '#type' => 'submit',
+        '#value' => new TranslatableMarkup('Apply EXIF'),
+        '#name' => 'apply_exif_' . ($field_name ? $field_name : 'button'),
+        '#button_type' => 'primary',
+        '#attributes' => [
+          'class' => ['apply-exif-button', 'button--primary'],
+          'data-action' => 'apply-exif',
+          'data-field-name' => $field_name,
+        ],
+        '#executes_submit_callback' => TRUE,
+        '#submit' => [[static::class, 'applyExifData']],
+        '#limit_validation_errors' => [],
+        '#ajax' => [
+          'callback' => [static::class, 'updateWidgetCallback'],
+          'wrapper' => $wrapper_id,
+          'progress' => [
+            'type' => 'throbber',
+            'message' => new TranslatableMarkup('Applying EXIF data...'),
+          ],
+        ],
+      ];
+    }
+
     // Cas classique avec 'actions'
     if (isset($element['actions'])) {
       $element['actions']['bulk_buttons_wrapper'] = [
@@ -1258,6 +1286,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_edit' => $bulk_edit_config,
         'bulk_remove' => $bulk_remove_config,
       ];
+      
+      // Ajouter le bouton EXIF si activé dans la configuration
+      if (!empty($apply_exif_config)) {
+        $element['actions']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
+      }
     }
     // Cas où les boutons sont au même niveau que open_modal
     elseif (isset($element['entity_browser']['open_modal'])) {
@@ -1267,6 +1300,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_edit' => $bulk_edit_config,
         'bulk_remove' => $bulk_remove_config,
       ];
+      
+      // Ajouter le bouton EXIF si activé dans la configuration
+      if (!empty($apply_exif_config)) {
+        $element['entity_browser']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
+      }
     }
 
     return $element;
@@ -1538,5 +1576,123 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback');
     return $element;
+  }
+  
+  /**
+   * Submit handler pour Apply EXIF data button.
+   */
+  public static function applyExifData(array &$form, FormStateInterface $form_state) {
+    $triggering_element = $form_state->getTriggeringElement();
+    $user_input = $form_state->getUserInput();
+    $selected_media_ids = [];
+    $field_name = '';
+
+    \Drupal::logger('media_attributes_manager')->debug('Apply EXIF data triggered');
+
+    // Récupérer le nom du champ depuis le bouton déclencheur
+    if (!empty($triggering_element['#attributes']['data-field-name'])) {
+      $field_name = $triggering_element['#attributes']['data-field-name'];
+    }
+    // Si pas trouvé, essayer de l'identifier à partir des parents du bouton
+    else {
+      // Analyser les parents du bouton pour trouver le nom du champ
+      if (!empty($triggering_element['#array_parents'])) {
+        foreach ($triggering_element['#array_parents'] as $parent) {
+          if (strpos($parent, 'field_') === 0) {
+            $field_name = $parent;
+            break;
+          }
+        }
+      }
+    }
+
+    // Si on n'a toujours pas trouvé le nom du champ, essayer de le déduire du nom du bouton
+    if (empty($field_name) && !empty($triggering_element['#name'])) {
+      $button_name = $triggering_element['#name'];
+      if (strpos($button_name, 'apply_exif_field_') === 0) {
+        $field_name = substr($button_name, strlen('apply_exif_'));
+      }
+    }
+
+    // Si on n'a pas pu identifier le champ, sortir avec un message d'erreur
+    if (empty($field_name)) {
+      \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for EXIF data application."));
+      return;
+    }
+
+    // Rechercher tous les médias sélectionnés (même logique que pour bulkRemoveSelected)
+    if (isset($form[$field_name]['widget']['current']['items'])) {
+      foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
+        $item = $form[$field_name]['widget']['current']['items'][$delta];
+        
+        // Vérifier si la checkbox est cochée
+        $checked = FALSE;
+        if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
+          $checked = TRUE;
+        }
+        // Vérifier dans les valeurs soumises par l'utilisateur
+        elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
+          $checked = TRUE;
+        }
+
+        // Si la checkbox est cochée, extraire l'ID du média
+        if ($checked && !empty($item['#attributes']['data-entity-id'])) {
+          $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
+          if (!empty($media_id)) {
+            $selected_media_ids[] = $media_id;
+          }
+        }
+      }
+    }
+
+    // Si aucun média sélectionné, afficher un message et sortir
+    if (empty($selected_media_ids)) {
+      \Drupal::messenger()->addStatus(new TranslatableMarkup('No media items selected for EXIF data application.'));
+      return;
+    }
+
+    \Drupal::logger('media_attributes_manager')->debug('Selected media IDs for EXIF application: @ids', [
+      '@ids' => implode(', ', $selected_media_ids)
+    ]);
+
+    // Vérifier si les champs doivent être créés automatiquement
+    $config = \Drupal::config('media_attributes_manager.settings');
+    if ($config->get('auto_create_fields')) {
+      $field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
+      $fields_created = $field_manager->createExifFieldsOnDemand();
+      
+      if ($fields_created > 0) {
+        $field_message = \Drupal::translation()->formatPlural(
+          $fields_created,
+          'One EXIF field has been created automatically.',
+          '@count EXIF fields have been created automatically.'
+        );
+        \Drupal::messenger()->addStatus($field_message);
+      }
+    }
+
+    // Appeler le service ExifDataManager pour appliquer les données EXIF
+    $exif_service = \Drupal::service('media_attributes_manager.exif_data_manager');
+    $updated_count = $exif_service->applyExifData($selected_media_ids);
+
+    // Message de confirmation
+    if ($updated_count > 0) {
+      $message = \Drupal::translation()->formatPlural(
+        $updated_count,
+        'EXIF data has been applied and one media item has been fully updated.',
+        'EXIF data has been applied and @count media items have been fully updated.'
+      );
+      \Drupal::messenger()->addStatus($message);
+      
+      // Log the successful operation
+      \Drupal::logger('media_attributes_manager')->info('Applied EXIF data to @count media item(s) with full entity updates', [
+        '@count' => $updated_count
+      ]);
+    } else {
+      \Drupal::messenger()->addWarning(new TranslatableMarkup('No media items were updated with EXIF data. Make sure you have selected media items with EXIF data and that the selected EXIF fields exist in your media types.'));
+    }
+
+    // Forcer le rebuild du formulaire pour AJAX (même si pas nécessaire puisque les médias sont modifiés en base)
+    $form_state->setRebuild(TRUE);
   }
 }

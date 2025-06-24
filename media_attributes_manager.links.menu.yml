@@ -1,0 +1,5 @@
+media_attributes_manager.settings:
+  title: 'Media Attributes Manager Settings'
+  parent: system.admin_config_media
+  description: 'Configure settings for Media Attributes Manager, including EXIF data extraction.'
+  route_name: media_attributes_manager.settings

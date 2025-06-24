@@ -1,0 +1,10 @@
+services:
+  media_attributes_manager.exif_data_manager:
+    class: Drupal\media_attributes_manager\Service\ExifDataManager
+    arguments: ['@config.factory', '@entity_type.manager', '@logger.factory', '@messenger']
+  media_attributes_manager.exif_field_manager:
+    class: Drupal\media_attributes_manager\Service\ExifFieldManager
+    arguments: ['@config.factory', '@entity_type.manager', '@entity_field.manager', '@module_handler', '@logger.factory', '@messenger']
+  media_attributes_manager.exif_field_creation_queue_manager:
+    class: Drupal\media_attributes_manager\Service\ExifFieldCreationQueueManager
+    arguments: ['@queue', '@state', '@logger.factory', '@messenger']

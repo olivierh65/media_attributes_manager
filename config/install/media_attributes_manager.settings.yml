@@ -1,0 +1,26 @@
+enable_exif_feature: true
+auto_create_fields: false
+fields_to_create: false
+exif_data_selection:
+  computed_height: false
+  computed_width: false
+  make: false
+  model: false
+  orientation: false
+  software: false
+  copyright: false
+  artist: false
+  datetime_original: false
+  datetime_digitized: false
+  exif_image_width: false
+  exif_image_length: false
+  exposure: false
+  aperture: false
+  iso: false
+  focal_length: false
+  gps_latitude: false
+  gps_longitude: false
+  gps_altitude: false
+  gps_date: false
+  gps_coordinates: false
+exif_enabled_media_types: []

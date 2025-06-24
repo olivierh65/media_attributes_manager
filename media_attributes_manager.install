@@ -1,0 +1,47 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Media Attributes Manager module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function media_attributes_manager_install() {
+  // Ensure the default configuration is properly set up
+  $config = \Drupal::configFactory()->getEditable('media_attributes_manager.settings');
+  
+  // Only set defaults if the config is empty (first installation)
+  if (!$config->get('enable_exif_feature')) {
+    $config->set('enable_exif_feature', TRUE);
+    $config->set('auto_create_fields', FALSE);
+    $config->set('fields_to_create', FALSE);
+    
+    // Set all EXIF data selection to FALSE by default
+    $exif_fields = [
+      'computed_height', 'computed_width', 
+      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
+      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
+      'exposure', 'aperture', 'iso', 'focal_length',
+      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
+    ];
+    
+    foreach ($exif_fields as $field) {
+      $config->set("exif_data_selection.$field", FALSE);
+    }
+    
+    // Initialize empty mappings
+    $config->set('exif_mappings', []);
+    
+    $config->save();
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function media_attributes_manager_uninstall() {
+  // Clean up configuration when uninstalling
+  \Drupal::configFactory()->getEditable('media_attributes_manager.settings')->delete();
+}
