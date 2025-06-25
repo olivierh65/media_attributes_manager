@@ -522,4 +522,37 @@ class MediaAttributesCommands extends DrushCommands {
     $this->output()->writeln(sprintf('Enabled basic EXIF fields: %s', implode(', ', $basic_fields)));
   }
 
+  /**
+   * Remove EXIF fields from media types.
+   *
+   * @param string $media_types
+   *   Comma-separated list of media type IDs.
+   *
+   * @command ma:remove-fields
+   * @aliases ma:rf
+   * @option remove-storage Remove field storage if unused
+   * @usage drush ma:remove-fields image,document
+   *   Remove EXIF fields from image and document media types.
+   */
+  public function removeExifFields(string $media_types, array $options = ['remove-storage' => FALSE]) {
+    $media_type_ids = array_map('trim', explode(',', $media_types));
+    $remove_storage = $options['remove-storage'];
+
+    if (empty($media_type_ids)) {
+      $this->output()->writeln('<error>Please provide at least one media type ID.</error>');
+      return;
+    }
+
+    $this->output()->writeln('<info>Removing EXIF fields from media types: ' . implode(', ', $media_type_ids) . '</info>');
+
+    $exif_field_manager = $this->exifFieldManager();
+    $fields_removed = $exif_field_manager->removeExifFields($media_type_ids, $remove_storage);
+
+    if ($fields_removed > 0) {
+      $this->output()->writeln('<info>Successfully removed ' . $fields_removed . ' EXIF fields.</info>');
+    } else {
+      $this->output()->writeln('<comment>No EXIF fields found to remove.</comment>');
+    }
+  }
+
 }

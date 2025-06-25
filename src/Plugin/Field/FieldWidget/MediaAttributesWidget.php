@@ -486,6 +486,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           'media_id' => $media->id(),
           'media_url' => $media->toUrl()->toString(),
           'media_type' => $bundle,
+          'media_type_label' => $media_type->label(),
           'media_base_type' => $media_type->getSource()->getPluginId() ?? NULL,
           'media_name' => $media->label(),
           'media_thumbnail_url' => '',

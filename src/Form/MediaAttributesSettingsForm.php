@@ -231,6 +231,13 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
         '#default_value' => $config->get('exif_enabled_media_types') ?: array_keys($media_type_options),
         '#description' => $this->t('EXIF fields will be created and populated for the selected media types. If none are selected, all image media types will be processed.'),
       ];
+      
+      $form['exif_media_types']['remove_fields_on_disable'] = [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Automatically remove EXIF fields when media types are disabled'),
+        '#default_value' => $config->get('remove_fields_on_disable') ?? FALSE,
+        '#description' => $this->t('When enabled, EXIF fields will be automatically removed from media types that are unchecked above. <strong>Warning:</strong> This will permanently delete the fields and their data.'),
+      ];
     } else {
       $form['exif_media_types']['no_image_types'] = [
         '#markup' => '<p>' . $this->t('No image media types found.') . '</p>',
@@ -258,6 +265,7 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
     $config->set('enable_exif_feature', $form_state->getValue('enable_exif_feature'));
     $config->set('use_ajax_progress_bar', $form_state->getValue('use_ajax_progress_bar'));
     $config->set('auto_create_fields', $form_state->getValue('auto_create_fields'));
+    $config->set('remove_fields_on_disable', $form_state->getValue('remove_fields_on_disable'));
 
     // Save EXIF data selection
     $exif_categories = ['computed', 'ifd0', 'exif', 'gps'];
@@ -294,6 +302,9 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
         }
       }
     }
+
+    // Check if any media types were unchecked (removed from selection)
+    $this->handleRemovedMediaTypes($form_state, $config);
 
     // Save selected media types for EXIF processing
     $enabled_media_types = $form_state->getValue('exif_enabled_media_types');
@@ -413,6 +424,73 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
       if (\Drupal::hasService('logger.factory')) {
         $logger = \Drupal::logger('media_attributes_manager');
         $logger->info('Migrated old exif_mappings configuration to new format.');
+      }
+    }
+  }
+
+  /**
+   * Handle removal of EXIF fields when media types are unchecked.
+   *
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state.
+   * @param \Drupal\Core\Config\Config $config
+   *   The configuration object.
+   */
+  protected function handleRemovedMediaTypes(FormStateInterface $form_state, $config) {
+    // Get current enabled media types from config
+    $current_enabled = $config->get('exif_enabled_media_types') ?: [];
+    
+    // Get newly selected media types from form
+    $new_enabled_raw = $form_state->getValue('exif_enabled_media_types');
+    $new_enabled = [];
+    
+    if (is_array($new_enabled_raw)) {
+      // Filter out unchecked values (Drupal checkboxes return 0 for unchecked)
+      $new_enabled_filtered = array_filter($new_enabled_raw);
+      $new_enabled = array_keys($new_enabled_filtered);
+    }
+    
+    // Find media types that were removed (present in current but not in new)
+    $removed_media_types = array_diff($current_enabled, $new_enabled);
+    
+    if (!empty($removed_media_types)) {
+      if (\Drupal::hasService('logger.factory')) {
+        $logger = \Drupal::logger('media_attributes_manager');
+        $logger->info('Media types removed from EXIF processing: @types', [
+          '@types' => implode(', ', $removed_media_types)
+        ]);
+      }
+      
+      // Ask user if they want to remove fields
+      $remove_fields = $form_state->getValue('remove_fields_on_disable');
+      
+      if ($remove_fields) {
+        $exif_field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
+        $fields_removed = $exif_field_manager->removeExifFields($removed_media_types, TRUE);
+        
+        if ($fields_removed > 0) {
+          $message = \Drupal::translation()->formatPlural(
+            $fields_removed,
+            'Removed 1 EXIF field from disabled media types.',
+            'Removed @count EXIF fields from disabled media types.'
+          );
+          $this->messenger()->addStatus($message);
+        }
+      } else {
+        // Just inform the user that fields still exist
+        $type_labels = [];
+        foreach ($removed_media_types as $type_id) {
+          $media_type = \Drupal\media\Entity\MediaType::load($type_id);
+          if ($media_type) {
+            $type_labels[] = $media_type->label();
+          }
+        }
+        
+        if (!empty($type_labels)) {
+          $this->messenger()->addWarning($this->t('EXIF fields still exist on the following media types but will no longer be automatically populated: @types. You can manually remove these fields if needed.', [
+            '@types' => implode(', ', $type_labels)
+          ]));
+        }
       }
     }
   }

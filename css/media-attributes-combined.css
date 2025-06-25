@@ -410,19 +410,33 @@
   position: relative;
 }
 
-.media-item-url {
+.media-item-info {
   width: 100%;
   padding: 4px 8px;
   background-color: rgba(0, 0, 0, 0.05);
   color: #333;
   font-size: 0.85em;
   text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   box-sizing: border-box;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   margin-top: auto; /* Pousse vers le bas */
+}
+
+.media-item-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.media-item-type {
+  font-size: 0.9em;
+  color: #666;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 

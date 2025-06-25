@@ -824,4 +824,124 @@ class ExifFieldManager {
     return $fields_to_create;
   }
 
+  /**
+   * Remove EXIF fields from specified media types.
+   *
+   * @param array $media_type_ids
+   *   Array of media type IDs to remove EXIF fields from.
+   * @param bool $remove_storage
+   *   Whether to remove field storage (only if no other bundles use it).
+   *
+   * @return int
+   *   Number of fields removed.
+   */
+  public function removeExifFields(array $media_type_ids, bool $remove_storage = FALSE) {
+    if (empty($media_type_ids)) {
+      return 0;
+    }
+
+    $fields_removed = 0;
+    $this->logger->info('Starting EXIF field removal for media types: @types', [
+      '@types' => implode(', ', $media_type_ids)
+    ]);
+
+    // Get all possible EXIF field names
+    $exif_fields = [
+      'computed_height', 'computed_width',
+      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
+      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
+      'exposure', 'aperture', 'iso', 'focal_length',
+      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
+    ];
+
+    foreach ($media_type_ids as $media_type_id) {
+      // Check if media type exists
+      $media_type = MediaType::load($media_type_id);
+      if (!$media_type) {
+        $this->logger->warning('Media type @type not found', ['@type' => $media_type_id]);
+        continue;
+      }
+
+      foreach ($exif_fields as $exif_key) {
+        $field_name = $this->generateFieldName($exif_key);
+        
+        try {
+          // Check if field config exists for this bundle
+          $field_config = FieldConfig::loadByName('media', $media_type_id, $field_name);
+          if ($field_config) {
+            $field_config->delete();
+            $fields_removed++;
+            
+            $this->logger->info('Removed EXIF field @field from media type @type', [
+              '@field' => $field_name,
+              '@type' => $media_type_id,
+            ]);
+
+            // If remove_storage is enabled, check if we should remove the storage too
+            if ($remove_storage) {
+              $this->removeFieldStorageIfUnused($field_name);
+            }
+          }
+        }
+        catch (\Exception $e) {
+          $this->logger->error('Error removing EXIF field @field from media type @type: @error', [
+            '@field' => $field_name,
+            '@type' => $media_type_id,
+            '@error' => $e->getMessage(),
+          ]);
+        }
+      }
+    }
+
+    if ($fields_removed > 0) {
+      // Clear field caches
+      $this->entityFieldManager->clearCachedFieldDefinitions();
+      
+      $this->logger->info('Removed @count EXIF fields from media types', [
+        '@count' => $fields_removed
+      ]);
+      
+      $this->messenger->addStatus($this->t('Removed @count EXIF fields from selected media types.', [
+        '@count' => $fields_removed,
+      ]));
+    } else {
+      $this->logger->info('No EXIF fields found to remove from specified media types');
+    }
+
+    return $fields_removed;
+  }
+
+  /**
+   * Remove field storage if it's not used by any bundle.
+   *
+   * @param string $field_name
+   *   The field name.
+   */
+  protected function removeFieldStorageIfUnused(string $field_name) {
+    try {
+      $field_storage = FieldStorageConfig::loadByName('media', $field_name);
+      if ($field_storage) {
+        // Check if any other bundles are using this field
+        $bundles = $field_storage->getBundles();
+        if (empty($bundles)) {
+          $field_storage->delete();
+          $this->logger->info('Removed unused field storage for @field', [
+            '@field' => $field_name,
+          ]);
+        } else {
+          $this->logger->debug('Field storage @field still in use by bundles: @bundles', [
+            '@field' => $field_name,
+            '@bundles' => implode(', ', $bundles),
+          ]);
+        }
+      }
+    }
+    catch (\Exception $e) {
+      $this->logger->error('Error checking/removing field storage for @field: @error', [
+        '@field' => $field_name,
+        '@error' => $e->getMessage(),
+      ]);
+    }
+  }
+
 }
