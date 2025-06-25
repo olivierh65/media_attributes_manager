@@ -1,3 +1,16 @@
+progress-bar:
+  js:
+    js/media-attributes-widget.js: {}
+  css:
+    theme:
+      css/media-attributes-combined.css: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
+    - core/drupal.ajax
+    - core/drupalSettings
+
 widget:
   js:
     js/media-attributes-widget.js: {}

@@ -53,16 +53,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     // Récupère le FieldDefinition
     $this->field_definition = $items->getFieldDefinition();
+    $field_name = $this->field_definition->getName();
 
     // Parcourt les médias déjà sélectionnés
     foreach ($items as $item_key => $item) {
       if (!empty($item->target_id)) {
         $media = \Drupal::entityTypeManager()->getStorage('media')->load($item->target_id);
         if ($media) {
-          foreach ($media->getFieldDefinitions() as $field_name => $definition) {
+          foreach ($media->getFieldDefinitions() as $media_field_name => $definition) {
             // Ignore les champs de base (comme 'mid', 'bundle', etc.)
-            if ($media->hasField($field_name) && !$definition->getFieldStorageDefinition()->isBaseField()) {
-              $field = $media->get($field_name);
+            if ($media->hasField($media_field_name) && !$definition->getFieldStorageDefinition()->isBaseField()) {
+              $field = $media->get($media_field_name);
               $value = NULL;
 
               // Selon le type de champ, récupère la valeur différemment.
@@ -1254,6 +1255,13 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $config = \Drupal::config('media_attributes_manager.settings');
     $apply_exif_config = [];
     if ($config->get('enable_exif_feature') !== FALSE) {
+      // Check if field creation is in progress
+      $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
+      $field_creation_progress = $queue_manager->getFieldCreationProgress();
+      
+      // Check if AJAX progress should be used (default: true for better UX)
+      $use_ajax_progress = $config->get('use_ajax_progress_bar') !== FALSE;
+      
       $apply_exif_config = [
         '#type' => 'submit',
         '#value' => new TranslatableMarkup('Apply EXIF'),
@@ -1267,15 +1275,44 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         '#executes_submit_callback' => TRUE,
         '#submit' => [[static::class, 'applyExifData']],
         '#limit_validation_errors' => [],
-        '#ajax' => [
+      ];
+      
+      // Configure AJAX behavior based on setting
+      if ($use_ajax_progress) {
+        // Use JavaScript-based progress bar (no server-side AJAX callback)
+        $apply_exif_config['#attributes']['class'][] = 'use-ajax-progress';
+        $apply_exif_config['#attached']['library'][] = 'media_attributes_manager/progress-bar';
+      } else {
+        // Use traditional AJAX callback
+        $apply_exif_config['#ajax'] = [
           'callback' => [static::class, 'updateWidgetCallback'],
           'wrapper' => $wrapper_id,
           'progress' => [
             'type' => 'throbber',
             'message' => new TranslatableMarkup('Applying EXIF data...'),
           ],
-        ],
-      ];
+        ];
+      }
+      
+      // Disable button if field creation is in progress
+      if ($field_creation_progress['in_progress']) {
+        $apply_exif_config['#disabled'] = TRUE;
+        $apply_exif_config['#attributes']['class'][] = 'button--disabled';
+        
+        if (!empty($field_creation_progress['has_stuck_items'])) {
+          // Show different message for stuck items
+          $apply_exif_config['#suffix'] = '<div class="field-creation-notice field-creation-stuck"><em>' . 
+            new TranslatableMarkup('EXIF field creation queue has stuck items (@count total). <a href="#" onclick="cleanStuckItems(); return false;">Click here to clean stuck items</a> and try again.', [
+              '@count' => $field_creation_progress['items_in_queue'],
+            ]) . '</em></div>';
+        } else {
+          // Normal in-progress message
+          $apply_exif_config['#suffix'] = '<div class="field-creation-notice"><em>' . 
+            new TranslatableMarkup('EXIF field creation is in progress (@count tasks remaining). Please wait for completion before applying EXIF data.', [
+              '@count' => $field_creation_progress['items_in_queue'],
+            ]) . '</em></div>';
+        }
+      }
     }
 
     // Cas classique avec 'actions'

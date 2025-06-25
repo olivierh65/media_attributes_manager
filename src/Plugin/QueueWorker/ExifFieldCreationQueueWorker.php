@@ -76,8 +76,13 @@ class ExifFieldCreationQueueWorker extends QueueWorkerBase implements ContainerF
    * {@inheritdoc}
    */
   public function processItem($data) {
+    $this->logger->info('EXIF field creation queue worker started processing item');
+    $this->logger->debug('Queue item data: @data', [
+      '@data' => json_encode($data, JSON_PRETTY_PRINT),
+    ]);
+    
     if (!isset($data['selected_exif']) || !isset($data['enabled_media_types'])) {
-      $this->logger->error('Invalid queue data for EXIF field creation: @data', [
+      $this->logger->error('Invalid queue data for EXIF field creation: missing required keys. Data: @data', [
         '@data' => json_encode($data),
       ]);
       return;
@@ -87,17 +92,35 @@ class ExifFieldCreationQueueWorker extends QueueWorkerBase implements ContainerF
       '@count' => count($data['selected_exif']),
       '@types' => count($data['enabled_media_types']),
     ]);
+    
+    $this->logger->debug('Selected EXIF fields: @fields', [
+      '@fields' => implode(', ', $data['selected_exif'])
+    ]);
+    
+    $this->logger->debug('Enabled media types: @types', [
+      '@types' => implode(', ', $data['enabled_media_types'])
+    ]);
 
+    $start_time = microtime(true);
+    
     try {
+      $this->logger->info('Starting EXIF field creation process via queue worker');
+      
+      $auto_create_enabled = $data['auto_create_enabled'] ?? TRUE;
+      
       $fields_created = $this->exifFieldManager->createExifFieldsFromForm(
         $data['selected_exif'],
         $data['enabled_media_types'],
-        TRUE
+        $auto_create_enabled
       );
 
+      $end_time = microtime(true);
+      $execution_time = round($end_time - $start_time, 2);
+      
       if ($fields_created > 0) {
-        $this->logger->info('Successfully created @count EXIF field(s)', [
+        $this->logger->info('Successfully created @count EXIF field(s) in @time seconds', [
           '@count' => $fields_created,
+          '@time' => $execution_time,
         ]);
 
         // Store success message for display on next page load
@@ -105,15 +128,47 @@ class ExifFieldCreationQueueWorker extends QueueWorkerBase implements ContainerF
         $state->set('media_attributes_manager.field_creation_success', [
           'fields_created' => $fields_created,
           'timestamp' => time(),
+          'execution_time' => $execution_time,
         ]);
+        
+        $this->logger->info('Field creation success stored in state for user notification');
       } else {
-        $this->logger->info('No new EXIF fields were created (fields may already exist)');
+        $this->logger->info('No new EXIF fields were created in @time seconds (fields may already exist)', [
+          '@time' => $execution_time
+        ]);
+        
+        // Store info message for display on next page load
+        $state = \Drupal::state();
+        $state->set('media_attributes_manager.field_creation_info', [
+          'message' => 'No new fields were created - all required fields already exist',
+          'timestamp' => time(),
+          'execution_time' => $execution_time,
+        ]);
       }
+      
+      $this->logger->info('EXIF field creation queue worker completed successfully');
     }
     catch (\Exception $e) {
-      $this->logger->error('Error during EXIF field creation: @error', [
+      $end_time = microtime(true);
+      $execution_time = round($end_time - $start_time, 2);
+      
+      $this->logger->error('Error during EXIF field creation after @time seconds: @error', [
         '@error' => $e->getMessage(),
+        '@time' => $execution_time,
       ]);
+      
+      $this->logger->error('Exception trace: @trace', [
+        '@trace' => $e->getTraceAsString(),
+      ]);
+      
+      // Store error message for display on next page load
+      $state = \Drupal::state();
+      $state->set('media_attributes_manager.field_creation_error', [
+        'error' => $e->getMessage(),
+        'timestamp' => time(),
+        'execution_time' => $execution_time,
+      ]);
+      
       throw $e;
     }
   }

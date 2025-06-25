@@ -84,3 +84,9 @@ media_attributes_manager.settings:
       sequence:
         type: string
         label: 'Media type ID'
+    field_creation_in_progress:
+      type: boolean
+      label: 'Field creation in progress flag'
+    use_ajax_progress_bar:
+      type: boolean
+      label: 'Use AJAX progress bar'

@@ -1,0 +1,5 @@
+services:
+  media_attributes_manager.commands:
+    class: Drupal\media_attributes_manager\Commands\MediaAttributesCommands
+    tags:
+      - { name: drush.command }

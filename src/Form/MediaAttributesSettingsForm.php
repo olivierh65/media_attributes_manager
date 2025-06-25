@@ -36,6 +36,19 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
     // Check and display any field creation results
     $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
     $queue_manager->checkAndDisplayResults();
+    
+    // Show field creation progress
+    $field_creation_progress = $queue_manager->getFieldCreationProgress();
+    if ($field_creation_progress['in_progress']) {
+      $form['field_creation_status'] = [
+        '#type' => 'markup',
+        '#markup' => '<div class="messages messages--warning">' . 
+          $this->t('Field creation is currently in progress: @count tasks remaining. New field creation will be queued after current tasks complete.', [
+            '@count' => $field_creation_progress['items_in_queue'],
+          ]) . '</div>',
+        '#weight' => -10,
+      ];
+    }
 
     // Debug: log current config state
     if (\Drupal::hasService('logger.factory')) {
@@ -60,6 +73,18 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
       '#title' => $this->t('Enable EXIF data extraction and application'),
       '#default_value' => $config->get('enable_exif_feature') ?? TRUE,
       '#description' => $this->t('When enabled, the widget will show a button to apply EXIF data to selected media items.'),
+    ];
+
+    $form['general']['use_ajax_progress_bar'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Use interactive progress bar for EXIF processing'),
+      '#default_value' => $config->get('use_ajax_progress_bar') ?? TRUE,
+      '#description' => $this->t('When enabled, EXIF data application will show a real-time progress bar. When disabled, uses a simple loading indicator.'),
+      '#states' => [
+        'visible' => [
+          ':input[name="enable_exif_feature"]' => ['checked' => TRUE],
+        ],
+      ],
     ];
 
     $form['general']['auto_create_fields'] = [
@@ -231,6 +256,7 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
 
     // Save general settings
     $config->set('enable_exif_feature', $form_state->getValue('enable_exif_feature'));
+    $config->set('use_ajax_progress_bar', $form_state->getValue('use_ajax_progress_bar'));
     $config->set('auto_create_fields', $form_state->getValue('auto_create_fields'));
 
     // Save EXIF data selection
@@ -285,7 +311,7 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
 
     $config->save();
 
-    // If auto-create fields is enabled, queue field creation instead of doing it immediately
+    // If auto-create fields is enabled, queue field creation automatically
     if ($form_state->getValue('auto_create_fields')) {
       // Collect selected EXIF fields from form values
       $selected_exif = [];
@@ -311,12 +337,18 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
         $enabled_media_types = [];
       }
 
-      // Queue the field creation instead of doing it immediately
+      // Queue the field creation automatically
       if (!empty($selected_exif) && !empty($enabled_media_types)) {
         $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
-        $queue_manager->queueFieldCreation($selected_exif, $enabled_media_types);
+        $auto_create_enabled = $form_state->getValue('auto_create_fields');
+        $queue_manager->queueFieldCreation($selected_exif, $enabled_media_types, $auto_create_enabled);
       } else {
-        \Drupal::messenger()->addWarning($this->t('No EXIF fields or media types selected for field creation.'));
+        if (empty($selected_exif)) {
+          \Drupal::messenger()->addWarning($this->t('No EXIF fields selected. Please select at least one EXIF data type to create fields.'));
+        }
+        if (empty($enabled_media_types)) {
+          \Drupal::messenger()->addWarning($this->t('No media types selected. Please select at least one media type to create fields for.'));
+        }
       }
     }
 

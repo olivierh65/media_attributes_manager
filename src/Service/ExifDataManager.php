@@ -78,6 +78,25 @@ class ExifDataManager {
    *   The number of media entities updated.
    */
   public function applyExifData(array $media_ids) {
+    // Use the progress-enabled version without callback for backward compatibility
+    return $this->applyExifDataWithProgress($media_ids);
+  }
+
+  /**
+   * Apply EXIF data to media entities with progress callback.
+   *
+   * @param array $media_ids
+   *   Array of media entity IDs.
+   * @param callable|null $progress_callback
+   *   Optional callback function to report progress. Will be called with
+   *   ($current, $total, $media_id, $updated) parameters.
+   * @param bool $suppress_messages
+   *   Whether to suppress warning messages during batch processing.
+   *
+   * @return int
+   *   Number of media entities updated.
+   */
+  public function applyExifDataWithProgress(array $media_ids, callable $progress_callback = NULL, bool $suppress_messages = TRUE) {
     if (empty($media_ids)) {
       return 0;
     }
@@ -89,187 +108,85 @@ class ExifDataManager {
       return 0;
     }
 
-    // Load media entities.
-    $media_entities = $this->entityTypeManager->getStorage('media')
-      ->loadMultiple($media_ids);
-
-    // Count of updated entities.
+    $total_count = count($media_ids);
     $updated_count = 0;
+    $current = 0;
 
-    foreach ($media_entities as $media) {
+    $this->logger->info('Starting EXIF data application for @count media entities', [
+      '@count' => $total_count
+    ]);
+
+    // Process each media entity individually for better progress tracking
+    foreach ($media_ids as $media_id) {
+      $current++;
+
+      // Load media entity
+      $media = $this->entityTypeManager->getStorage('media')->load($media_id);
       if (!$media instanceof MediaInterface) {
+        if ($progress_callback) {
+          $progress_callback($current, $total_count, $media_id, FALSE);
+        }
         continue;
       }
 
-      // Skip non-image media types or types without EXIF data.
+      // Skip non-image media types
       if ($media->getSource()->getPluginId() != 'image') {
+        if ($progress_callback) {
+          $progress_callback($current, $total_count, $media_id, FALSE);
+        }
         continue;
       }
 
       $media_type_id = $media->bundle();
 
-      // Get the file entity from the media.
+      // Get the file entity from the media
       $file = $this->getMediaFile($media);
       if (!$file) {
+        if ($progress_callback) {
+          $progress_callback($current, $total_count, $media_id, FALSE);
+        }
         continue;
       }
 
-      // Extract EXIF data.
-      $exif_data = $this->extractExifData($file);
+      // Extract EXIF data
+      $exif_data = $this->extractExifData($file, $suppress_messages);
       if (empty($exif_data)) {
+        if ($progress_callback) {
+          $progress_callback($current, $total_count, $media_id, FALSE);
+        }
         continue;
       }
 
-      // Check if this media type is enabled for EXIF processing
-      $enabled_media_types = $config->get('exif_enabled_media_types') ?: [];
-      if (!empty($enabled_media_types) && !in_array($media_type_id, $enabled_media_types)) {
+      // Check if media type has EXIF fields and apply data
+      $has_fields = $this->checkExifFields($media_type_id);
+      if (!$has_fields) {
+        if ($progress_callback) {
+          $progress_callback($current, $total_count, $media_id, FALSE);
+        }
         continue;
       }
 
-      $media_updated = FALSE;
-
-      // Apply EXIF data directly to fields based on naming convention
-      foreach ($exif_data as $exif_key => $exif_value) {
-        // Skip empty values
-        if (empty($exif_value)) {
-          continue;
-        }
-
-        // Generate field name based on EXIF key (e.g., 'make' -> 'field_exif_make')
-        $field_name = 'field_exif_' . $exif_key;
-
-        if ($media->hasField($field_name)) {
-          $field_definition = $media->getFieldDefinition($field_name);
-          $field_type = $field_definition->getType();
-
-          // Handle different field types.
-          switch ($field_type) {
-            case 'string':
-            case 'string_long':
-            case 'text':
-            case 'text_long':
-              $media->set($field_name, $exif_value);
-              $media_updated = TRUE;
-              break;
-
-            case 'datetime':
-              // Try to convert to a datetime format if it's a timestamp or date string.
-              if (is_numeric($exif_value)) {
-                $media->set($field_name, date('Y-m-d\TH:i:s', $exif_value));
-                $media_updated = TRUE;
-              }
-              elseif (strtotime($exif_value) !== FALSE) {
-                $media->set($field_name, date('Y-m-d\TH:i:s', strtotime($exif_value)));
-                $media_updated = TRUE;
-              }
-              break;
-
-            case 'entity_reference':
-              // For taxonomy terms, try to find matching terms or create them.
-              if ($field_definition->getSetting('target_type') == 'taxonomy_term') {
-                $vid = $field_definition->getSetting('handler_settings')['target_bundles'] ?? NULL;
-                if (!empty($vid) && is_array($vid)) {
-                  $vid = reset($vid);
-
-                  // Try to find existing term.
-                  $terms = $this->entityTypeManager->getStorage('taxonomy_term')
-                    ->loadByProperties([
-                      'name' => $exif_value,
-                      'vid' => $vid,
-                    ]);
-
-                  if (!empty($terms)) {
-                    $term = reset($terms);
-                    $media->set($field_name, ['target_id' => $term->id()]);
-                    $media_updated = TRUE;
-                  }
-                }
-              }
-              break;
-
-            case 'decimal':
-            case 'float':
-              // For numeric fields like GPS coordinates
-              if (is_numeric($exif_value)) {
-                $media->set($field_name, $exif_value);
-                $media_updated = TRUE;
-              }
-              break;
-
-            case 'integer':
-              // For integer fields like dimensions, ISO
-              if (is_numeric($exif_value)) {
-                $media->set($field_name, (int) $exif_value);
-                $media_updated = TRUE;
-              }
-              break;
-          }
-        }
+      // Apply EXIF data to entity
+      $entity_updated = $this->applyExifDataToEntity($media, $exif_data);
+      if ($entity_updated) {
+        $updated_count++;
       }
 
-      // Save the media entity if it was updated.
-      if ($media_updated) {
-        try {
-          // Set the changed timestamp to trigger proper update workflows
-          $media->setChangedTime(\Drupal::time()->getRequestTime());
-          
-          // Mark the entity as needing a full update (this ensures all hooks are triggered)
-          $media->enforceIsNew(FALSE);
-          
-          // Save the entity (this will trigger all appropriate hooks)
-          $media->save();
-          
-          // Invalidate cache tags for this media entity
-          \Drupal::service('cache_tags.invalidator')->invalidateTags($media->getCacheTags());
-          
-          // Trigger search index update if search API is available
-          if (\Drupal::moduleHandler()->moduleExists('search_api')) {
-            try {
-              \Drupal::service('search_api.post_request_indexing')->registerItem('entity:media', $media->id());
-            } catch (\Exception $search_exception) {
-              // Log but don't fail if search indexing fails
-              $this->logger->warning('Search indexing failed for media @id: @error', [
-                '@id' => $media->id(),
-                '@error' => $search_exception->getMessage(),
-              ]);
-            }
-          }
-          
-          $updated_count++;
-          
-          $this->logger->info('Successfully applied EXIF data to media ID @id with full entity update', [
-            '@id' => $media->id(),
-          ]);
-        }
-        catch (\Exception $e) {
-          $this->logger->error('Error applying EXIF data to media ID @id: @error', [
-            '@id' => $media->id(),
-            '@error' => $e->getMessage(),
-          ]);
-        }
+      // Call progress callback
+      if ($progress_callback) {
+        $progress_callback($current, $total_count, $media_id, $entity_updated);
       }
     }
 
-    // Trigger custom hooks for bulk EXIF update if any media were updated
+    $this->logger->info('EXIF data application completed: @updated/@total entities updated', [
+      '@updated' => $updated_count,
+      '@total' => $total_count
+    ]);
+
     if ($updated_count > 0) {
-      // Reload the updated media entities to ensure we have the latest data
-      $updated_media = $this->entityTypeManager->getStorage('media')
-        ->loadMultiple($media_ids);
-      
-      // Filter to only include actually updated media
-      $actually_updated = [];
-      foreach ($updated_media as $media) {
-        if ($media instanceof MediaInterface) {
-          $actually_updated[] = $media;
-        }
-      }
-      
-      // Trigger custom hook for modules that want to react to EXIF bulk updates
-      \Drupal::moduleHandler()->invokeAll('media_attributes_manager_exif_bulk_applied', [$actually_updated]);
-      
-      $this->logger->info('Completed EXIF data application for @count media entities', [
+      $this->messenger->addStatus($this->t('Applied EXIF data to @count media entities.', [
         '@count' => $updated_count,
-      ]);
+      ]));
     }
 
     return $updated_count;
@@ -313,11 +230,13 @@ class ExifDataManager {
    *
    * @param \Drupal\file\FileInterface $file
    *   The file entity.
+   * @param bool $suppress_messages
+   *   Whether to suppress warning messages.
    *
    * @return array
    *   Associative array of EXIF data.
    */
-  protected function extractExifData(FileInterface $file) {
+  protected function extractExifData(FileInterface $file, bool $suppress_messages = FALSE) {
     $exif_data = [];
     $file_path = \Drupal::service('file_system')->realpath($file->getFileUri());
 
@@ -330,8 +249,10 @@ class ExifDataManager {
 
     // Check if any EXIF data is selected before processing
     if (!$this->hasSelectedExifData()) {
-      $this->logger->warning('No EXIF data selected for extraction.');
-      $this->messenger->addWarning($this->t('No EXIF data selected for extraction.'));
+      if (!$suppress_messages) {
+        $this->logger->warning('No EXIF data selected for extraction.');
+        $this->messenger->addWarning($this->t('No EXIF data selected for extraction.'));
+      }
       return $exif_data;
     }
 
@@ -656,6 +577,175 @@ class ExifDataManager {
     ]);
 
     return FALSE;
+  }
+
+  /**
+   * Check if a media type has EXIF fields configured.
+   *
+   * @param string $media_type_id
+   *   The media type ID.
+   *
+   * @return bool
+   *   TRUE if the media type has EXIF fields, FALSE otherwise.
+   */
+  protected function checkExifFields($media_type_id) {
+    $field_definitions = \Drupal::service('entity_field.manager')
+      ->getFieldDefinitions('media', $media_type_id);
+
+    // Check if any field starts with 'field_exif_'
+    foreach ($field_definitions as $field_name => $field_definition) {
+      if (strpos($field_name, 'field_exif_') === 0) {
+        return TRUE;
+      }
+    }
+
+    return FALSE;
+  }
+
+  /**
+   * Apply EXIF data to a single media entity.
+   *
+   * @param \Drupal\media\MediaInterface $media
+   *   The media entity.
+   * @param array $exif_data
+   *   The EXIF data to apply.
+   *
+   * @return bool
+   *   TRUE if the entity was updated, FALSE otherwise.
+   */
+  protected function applyExifDataToEntity($media, array $exif_data) {
+    $media_type_id = $media->bundle();
+    $media_updated = FALSE;
+
+    $field_definitions = \Drupal::service('entity_field.manager')
+      ->getFieldDefinitions('media', $media_type_id);
+
+    $this->logger->debug('Applying EXIF data to media @id (@type)', [
+      '@id' => $media->id(),
+      '@type' => $media_type_id,
+    ]);
+
+    foreach ($exif_data as $exif_key => $exif_value) {
+      // Skip empty values
+      if ($exif_value === '' || $exif_value === NULL) {
+        continue;
+      }
+
+      // Generate field name by convention
+      $field_name = $this->generateFieldName($exif_key);
+
+      // Check if this field exists on the media type
+      if (!isset($field_definitions[$field_name])) {
+        continue;
+      }
+
+      $field_definition = $field_definitions[$field_name];
+      $field_type = $field_definition->getType();
+
+      $this->logger->debug('Setting EXIF field @field (@type) = @value', [
+        '@field' => $field_name,
+        '@type' => $field_type,
+        '@value' => is_string($exif_value) ? $exif_value : json_encode($exif_value),
+      ]);
+
+      // Set field value based on field type
+      switch ($field_type) {
+        case 'string':
+        case 'text':
+        case 'text_long':
+          $media->set($field_name, $exif_value);
+          $media_updated = TRUE;
+          break;
+
+        case 'integer':
+          if (is_numeric($exif_value)) {
+            $media->set($field_name, (int) $exif_value);
+            $media_updated = TRUE;
+          }
+          break;
+
+        case 'decimal':
+        case 'float':
+          if (is_numeric($exif_value)) {
+            $media->set($field_name, (float) $exif_value);
+            $media_updated = TRUE;
+          }
+          break;
+
+        case 'boolean':
+          $media->set($field_name, (bool) $exif_value);
+          $media_updated = TRUE;
+          break;
+
+        case 'datetime':
+          // Try to convert to a datetime format if it's a timestamp or date string.
+          if (is_numeric($exif_value)) {
+            $media->set($field_name, date('Y-m-d\TH:i:s', $exif_value));
+            $media_updated = TRUE;
+          }
+          elseif (strtotime($exif_value) !== FALSE) {
+            $media->set($field_name, date('Y-m-d\TH:i:s', strtotime($exif_value)));
+            $media_updated = TRUE;
+          }
+          break;
+
+        default:
+          // For unknown field types, try to set as string
+          $media->set($field_name, (string) $exif_value);
+          $media_updated = TRUE;
+          break;
+      }
+    }
+
+    // Save the media entity if any fields were updated
+    if ($media_updated) {
+      // Update the changed timestamp to reflect the modification
+      $media->set('changed', \Drupal::time()->getRequestTime());
+
+      // Save the entity
+      $media->save();
+
+      $this->logger->info('Updated media entity @id with EXIF data', [
+        '@id' => $media->id(),
+      ]);
+
+      // Invalidate search index if module exists
+      if (\Drupal::moduleHandler()->moduleExists('search_api')) {
+        // Use the proper Search API service
+        try {
+          \Drupal::service('search_api.post_request_indexing')->registerItem($media);
+        } catch (\Exception $e) {
+          $this->logger->warning('Could not update search index for media @id: @error', [
+            '@id' => $media->id(),
+            '@error' => $e->getMessage(),
+          ]);
+        }
+      }
+
+      // Allow other modules to react to EXIF application
+      \Drupal::moduleHandler()->invokeAll('media_attributes_manager_exif_applied', [$media]);
+    } else {
+      $this->logger->debug('No EXIF fields were updated for media @id', [
+        '@id' => $media->id(),
+      ]);
+    }
+
+    return $media_updated;
+  }
+
+  /**
+   * Generate a clean field name for an EXIF key.
+   *
+   * @param string $exif_key
+   *   The EXIF key.
+   *
+   * @return string
+   *   The clean field name.
+   */
+  protected function generateFieldName($exif_key) {
+    // Remove 'exif_' prefix if already present to avoid duplication
+    $clean_exif_key = preg_replace('/^exif_/', '', $exif_key);
+    return 'field_exif_' . $clean_exif_key;
   }
 
 }

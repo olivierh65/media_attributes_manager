@@ -502,3 +502,167 @@
 .taxonomy-field-container .form-autocomplete {
   min-width: 50px !important;
 }
+
+/* Field creation progress notice */
+.field-creation-notice {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.field-creation-notice.field-creation-stuck {
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
+.field-creation-notice a {
+  color: #0073aa;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.field-creation-notice a:hover {
+  color: #005177;
+}
+
+/* Disabled button styling */
+.apply-exif-button.button--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.apply-exif-button.button--disabled:hover {
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+/*
+ * SECTION 6: Styles pour la progress bar EXIF
+ */
+
+.exif-progress-container {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  max-width: 400px;
+}
+
+.exif-progress-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.exif-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff 0%, #0056b3 100%);
+  border-radius: 10px;
+  transition: width 0.3s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.exif-progress-fill:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.2) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.2) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 20px 20px;
+  animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 20px 0;
+  }
+}
+
+.exif-progress-text {
+  font-size: 14px;
+  color: #495057;
+  text-align: center;
+  font-weight: 500;
+}
+
+.exif-progress-text.success-message {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.exif-progress-text.warning-message {
+  color: #ffc107;
+  font-weight: 600;
+}
+
+.exif-progress-text.error-message {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+/* Style pour le bouton EXIF pendant le processing */
+.apply-exif-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.apply-exif-button.processing {
+  position: relative;
+}
+
+.apply-exif-button.processing:before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid transparent;
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments for progress bar */
+@media (max-width: 768px) {
+  .exif-progress-container {
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  
+  .exif-progress-text {
+    font-size: 12px;
+  }
+}

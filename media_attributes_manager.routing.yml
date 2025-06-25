@@ -33,3 +33,30 @@ media_attributes_manager.settings:
     _permission: 'administer site configuration'
   options:
     _admin_route: TRUE
+
+media_attributes_manager.clean_stuck_items:
+  path: '/media-attributes/clean-stuck-items'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\QueueMaintenanceController::cleanStuckItems'
+    _title: 'Clean Stuck Queue Items'
+  requirements:
+    _permission: 'administer media'
+  methods: [POST]
+
+media_attributes_manager.exif_progress_start:
+  path: '/media-attributes/exif-progress/start'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\ExifProgressController::processExif'
+    _title: 'Start EXIF Processing'
+  requirements:
+    _permission: 'administer media'
+  methods: [POST]
+
+media_attributes_manager.exif_progress_status:
+  path: '/media-attributes/exif-progress/status/{session_id}'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\ExifProgressController::getProgress'
+    _title: 'Get EXIF Progress Status'
+  requirements:
+    _permission: 'administer media'
+  methods: [GET]
