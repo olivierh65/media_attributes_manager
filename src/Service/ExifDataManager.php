@@ -9,12 +9,14 @@ use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\file\FileInterface;
 use Drupal\media\MediaInterface;
+use Drupal\media_attributes_manager\Traits\ExifFieldDefinitionsTrait;
 
 /**
  * Service for extracting and applying EXIF data to media entities.
  */
 class ExifDataManager {
   use StringTranslationTrait;
+  use ExifFieldDefinitionsTrait;
 
   /**
    * The config factory service.
@@ -555,13 +557,7 @@ class ExifDataManager {
   protected function hasSelectedExifData() {
     $config = $this->configFactory->get('media_attributes_manager.settings');
 
-    $exif_fields = [
-      'computed_height', 'computed_width',
-      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
-      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
-      'exposure', 'aperture', 'iso', 'focal_length',
-      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
-    ];
+    $exif_fields = static::getExifFieldKeys();
 
     foreach ($exif_fields as $field) {
       if ($config->get("exif_data_selection.$field")) {

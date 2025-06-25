@@ -7,11 +7,13 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\media\Entity\MediaType;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\media_attributes_manager\Traits\ExifFieldDefinitionsTrait;
 
 /**
  * Configure Media Attributes Manager settings.
  */
 class MediaAttributesSettingsForm extends ConfigFormBase {
+  use ExifFieldDefinitionsTrait;
 
   /**
    * {@inheritdoc}
@@ -123,6 +125,38 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
       ];
     }
 
+    // Show field removal queue information if available
+    if (\Drupal::hasService('media_attributes_manager.exif_field_removal_queue_manager')) {
+      $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+      $removal_progress = $removal_queue_manager->getFieldRemovalProgress();
+      
+      if ($removal_progress['in_progress'] || $removal_progress['items_in_queue'] > 0) {
+        $form['general']['removal_status'] = [
+          '#type' => 'item',
+          '#title' => $this->t('Field Removal Status'),
+          '#markup' => '<div class="messages messages--warning">' .
+            $this->t('Field removal in progress: @progress% complete (@processed/@total tasks)', [
+              '@progress' => $removal_progress['progress_percentage'],
+              '@processed' => $removal_progress['processed_tasks'],
+              '@total' => $removal_progress['total_tasks'],
+            ]) .
+            '</div>',
+        ];
+
+        if ($removal_progress['items_in_queue'] > 0) {
+          $form['general']['process_removal_queue'] = [
+            '#type' => 'submit',
+            '#value' => $this->t('Process Removal Queue Now'),
+            '#submit' => ['::processRemovalQueueSubmit'],
+            '#limit_validation_errors' => [],
+            '#attributes' => [
+              'class' => ['button--primary'],
+            ],
+          ];
+        }
+      }
+    }
+
     // EXIF Field selection section
     $form['exif_data_selection'] = [
       '#type' => 'details',
@@ -137,62 +171,20 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
     ];
 
     // Available EXIF data grouped by category
-    $exif_categories = [
-      'computed' => [
-        'title' => $this->t('Basic Image Information'),
-        'items' => [
-          'computed_height' => $this->t('Height (pixels)'),
-          'computed_width' => $this->t('Width (pixels)'),
-        ],
-      ],
-      'ifd0' => [
-        'title' => $this->t('Camera Information'),
-        'items' => [
-          'make' => $this->t('Camera Make'),
-          'model' => $this->t('Camera Model'),
-          'orientation' => $this->t('Orientation'),
-          'software' => $this->t('Software'),
-          'copyright' => $this->t('Copyright'),
-          'artist' => $this->t('Artist/Author'),
-        ],
-      ],
-      'exif' => [
-        'title' => $this->t('EXIF Information'),
-        'items' => [
-          'datetime_original' => $this->t('Date/Time Original'),
-          'datetime_digitized' => $this->t('Date/Time Digitized'),
-          'exif_image_width' => $this->t('EXIF Image Width'),
-          'exif_image_length' => $this->t('EXIF Image Height'),
-          'exposure' => $this->t('Exposure Time'),
-          'aperture' => $this->t('Aperture (F-Number)'),
-          'iso' => $this->t('ISO Speed'),
-          'focal_length' => $this->t('Focal Length'),
-        ],
-      ],
-      'gps' => [
-        'title' => $this->t('GPS Information'),
-        'items' => [
-          'gps_latitude' => $this->t('GPS Latitude'),
-          'gps_longitude' => $this->t('GPS Longitude'),
-          'gps_altitude' => $this->t('GPS Altitude'),
-          'gps_date' => $this->t('GPS Date/Time'),
-          'gps_coordinates' => $this->t('GPS Coordinates (formatted)'),
-        ],
-      ],
-    ];
+    $exif_categories = static::getExifFormStructure();
 
     // Create selection fields for each EXIF category
     foreach ($exif_categories as $category_key => $category) {
       $form['exif_data_selection'][$category_key] = [
         '#type' => 'details',
-        '#title' => $category['title'],
+        '#title' => $this->t($category['title']),
         '#open' => TRUE,
       ];
 
       foreach ($category['items'] as $item_key => $item_label) {
         $form['exif_data_selection'][$category_key][$item_key] = [
           '#type' => 'checkbox',
-          '#title' => $item_label,
+          '#title' => $this->t($item_label),
           '#default_value' => $config->get("exif_data_selection.$item_key") ?? FALSE,
           '#description' => $this->t('Extract this data from media files.'),
         ];
@@ -268,14 +260,8 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
     $config->set('remove_fields_on_disable', $form_state->getValue('remove_fields_on_disable'));
 
     // Save EXIF data selection
-    $exif_categories = ['computed', 'ifd0', 'exif', 'gps'];
-    $all_exif_fields = [
-      'computed_height', 'computed_width',
-      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
-      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
-      'exposure', 'aperture', 'iso', 'focal_length',
-      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
-    ];
+    $exif_categories = static::getExifCategoryKeys();
+    $all_exif_fields = static::getExifFieldKeys();
 
     // First, reset all EXIF data selection fields to FALSE to ensure clean state
     foreach ($all_exif_fields as $field_key) {
@@ -322,43 +308,64 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
 
     $config->save();
 
-    // If auto-create fields is enabled, queue field creation automatically
-    if ($form_state->getValue('auto_create_fields')) {
-      // Collect selected EXIF fields from form values
-      $selected_exif = [];
-      $exif_data_selection_values = $form_state->getValue('exif_data_selection');
-      if (is_array($exif_data_selection_values)) {
-        foreach (['computed', 'ifd0', 'exif', 'gps'] as $category) {
-          if (isset($exif_data_selection_values[$category]) && is_array($exif_data_selection_values[$category])) {
-            foreach ($exif_data_selection_values[$category] as $field_key => $enabled) {
-              if ($enabled) {
-                $selected_exif[] = $field_key;
-              }
+    // Always try to queue field creation if EXIF fields and media types are selected
+    // (regardless of auto_create_fields setting)
+    $selected_exif = [];
+    $exif_data_selection_values = $form_state->getValue('exif_data_selection');
+    if (is_array($exif_data_selection_values)) {
+      foreach (static::getExifCategoryKeys() as $category) {
+        if (isset($exif_data_selection_values[$category]) && is_array($exif_data_selection_values[$category])) {
+          foreach ($exif_data_selection_values[$category] as $field_key => $enabled) {
+            if ($enabled) {
+              $selected_exif[] = $field_key;
             }
           }
         }
       }
+    }
 
-      // Get selected media types
-      $enabled_media_types = $form_state->getValue('exif_enabled_media_types');
-      if (is_array($enabled_media_types)) {
-        $enabled_media_types = array_filter($enabled_media_types);
-        $enabled_media_types = array_keys($enabled_media_types);
-      } else {
-        $enabled_media_types = [];
-      }
+    // Get selected media types
+    $enabled_media_types = $form_state->getValue('exif_enabled_media_types');
+    if (is_array($enabled_media_types)) {
+      $enabled_media_types = array_filter($enabled_media_types);
+      $enabled_media_types = array_keys($enabled_media_types);
+    } else {
+      $enabled_media_types = [];
+    }
 
-      // Queue the field creation automatically
-      if (!empty($selected_exif) && !empty($enabled_media_types)) {
-        $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
-        $auto_create_enabled = $form_state->getValue('auto_create_fields');
+    // Queue field creation if both EXIF fields and media types are selected
+    if (!empty($selected_exif) && !empty($enabled_media_types)) {
+      $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
+      $auto_create_enabled = $form_state->getValue('auto_create_fields');
+      
+      try {
         $queue_manager->queueFieldCreation($selected_exif, $enabled_media_types, $auto_create_enabled);
-      } else {
+        
+        $this->messenger()->addStatus($this->t('Field creation has been queued for @types with @fields EXIF fields. Fields will be created automatically in the background.', [
+          '@types' => implode(', ', $enabled_media_types),
+          '@fields' => count($selected_exif),
+        ]));
+        
+      } catch (\Exception $e) {
+        $this->messenger()->addError($this->t('Error queuing field creation: @error', [
+          '@error' => $e->getMessage(),
+        ]));
+        
+        if (\Drupal::hasService('logger.factory')) {
+          $logger = \Drupal::logger('media_attributes_manager');
+          $logger->error('Error queuing field creation: @error', [
+            '@error' => $e->getMessage(),
+          ]);
+        }
+      }
+    } else {
+      // Only show warnings if EXIF feature is enabled but requirements aren't met
+      if ($form_state->getValue('enable_exif_feature')) {
         if (empty($selected_exif)) {
-          \Drupal::messenger()->addWarning($this->t('No EXIF fields selected. Please select at least one EXIF data type to create fields.'));
+          $this->messenger()->addWarning($this->t('No EXIF fields selected. Please select at least one EXIF data type to enable field creation.'));
         }
         if (empty($enabled_media_types)) {
-          \Drupal::messenger()->addWarning($this->t('No media types selected. Please select at least one media type to create fields for.'));
+          $this->messenger()->addWarning($this->t('No media types selected. Please select at least one media type to enable field creation.'));
         }
       }
     }
@@ -390,6 +397,25 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
       $this->messenger()->addStatus($message);
     } else {
       $this->messenger()->addWarning($this->t('No field creation tasks were found in the queue.'));
+    }
+  }
+
+  /**
+   * Submit handler for processing the removal queue manually.
+   */
+  public function processRemovalQueueSubmit(array &$form, FormStateInterface $form_state) {
+    $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+    $processed = $removal_queue_manager->processQueue(10); // Process up to 10 items
+
+    if ($processed > 0) {
+      $message = \Drupal::translation()->formatPlural(
+        $processed,
+        'Successfully processed 1 field removal task.',
+        'Successfully processed @count field removal tasks.'
+      );
+      $this->messenger()->addStatus($message);
+    } else {
+      $this->messenger()->addWarning($this->t('No field removal tasks were found in the queue.'));
     }
   }
 
@@ -465,16 +491,49 @@ class MediaAttributesSettingsForm extends ConfigFormBase {
       $remove_fields = $form_state->getValue('remove_fields_on_disable');
       
       if ($remove_fields) {
-        $exif_field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
-        $fields_removed = $exif_field_manager->removeExifFields($removed_media_types, TRUE);
+        // Use queue system for field removal
+        $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
         
-        if ($fields_removed > 0) {
-          $message = \Drupal::translation()->formatPlural(
-            $fields_removed,
-            'Removed 1 EXIF field from disabled media types.',
-            'Removed @count EXIF fields from disabled media types.'
-          );
-          $this->messenger()->addStatus($message);
+        // Get all EXIF fields that might exist on these media types
+        $fields_to_remove = [];
+        $field_manager = \Drupal::service('entity_field.manager');
+        
+        foreach ($removed_media_types as $media_type_id) {
+          $field_definitions = $field_manager->getFieldDefinitions('media', $media_type_id);
+          
+          foreach ($field_definitions as $field_name => $field_definition) {
+            if (strpos($field_name, 'field_exif_') === 0) {
+              $fields_to_remove[] = $field_name;
+            }
+          }
+        }
+        
+        if (!empty($fields_to_remove)) {
+          // Remove duplicates
+          $fields_to_remove = array_unique($fields_to_remove);
+          
+          try {
+            $removal_queue_manager->queueFieldRemovalTasks([], $fields_to_remove, $removed_media_types);
+            
+            $message = \Drupal::translation()->formatPlural(
+              count($fields_to_remove),
+              'Queued removal of 1 EXIF field from disabled media types. Fields will be removed in the background.',
+              'Queued removal of @count EXIF fields from disabled media types. Fields will be removed in the background.'
+            );
+            $this->messenger()->addStatus($message);
+            
+          } catch (\Exception $e) {
+            $this->messenger()->addError($this->t('Error queuing field removal: @error', [
+              '@error' => $e->getMessage(),
+            ]));
+            
+            if (\Drupal::hasService('logger.factory')) {
+              $logger = \Drupal::logger('media_attributes_manager');
+              $logger->error('Error queuing field removal: @error', [
+                '@error' => $e->getMessage(),
+              ]);
+            }
+          }
         }
       } else {
         // Just inform the user that fields still exist

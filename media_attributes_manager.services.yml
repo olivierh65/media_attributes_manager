@@ -8,3 +8,6 @@ services:
   media_attributes_manager.exif_field_creation_queue_manager:
     class: Drupal\media_attributes_manager\Service\ExifFieldCreationQueueManager
     arguments: ['@queue', '@state', '@logger.factory', '@messenger']
+  media_attributes_manager.exif_field_removal_queue_manager:
+    class: Drupal\media_attributes_manager\Service\ExifFieldRemovalQueueManager
+    arguments: ['@queue', '@state', '@config.factory', '@logger.factory', '@media_attributes_manager.exif_field_manager']

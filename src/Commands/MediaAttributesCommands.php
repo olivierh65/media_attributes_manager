@@ -9,11 +9,13 @@ use Drupal\media_attributes_manager\Service\ExifFieldCreationQueueManager;
 use Drupal\media\Entity\MediaType;
 use Drush\Commands\DrushCommands;
 use Drush\Utils\StringUtils;
+use Drupal\media_attributes_manager\Traits\ExifFieldDefinitionsTrait;
 
 /**
  * Drush commands for Media Attributes Manager.
  */
 class MediaAttributesCommands extends DrushCommands {
+  use ExifFieldDefinitionsTrait;
 
   /**
    * Get the EXIF data manager service.
@@ -199,13 +201,7 @@ class MediaAttributesCommands extends DrushCommands {
       $this->output()->writeln('=== DEBUG: Configuration ===');
       $this->output()->writeln('EXIF feature enabled: ' . ($config->get('enable_exif_feature') ? 'Yes' : 'No'));
 
-      $exif_fields = [
-        'computed_height', 'computed_width',
-        'make', 'model', 'orientation', 'software', 'copyright', 'artist',
-        'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
-        'exposure', 'aperture', 'iso', 'focal_length',
-        'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
-      ];
+      $exif_fields = static::getExifFieldKeys();
 
       $selected_fields = [];
       foreach ($exif_fields as $field) {
@@ -460,13 +456,7 @@ class MediaAttributesCommands extends DrushCommands {
   ]) {
     $config = \Drupal::configFactory()->getEditable('media_attributes_manager.settings');
 
-    $exif_fields = [
-      'computed_height', 'computed_width',
-      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
-      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
-      'exposure', 'aperture', 'iso', 'focal_length',
-      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
-    ];
+    $exif_fields = static::getExifFieldKeys();
 
     if ($options['disable']) {
       // Disable all fields
@@ -552,6 +542,186 @@ class MediaAttributesCommands extends DrushCommands {
       $this->output()->writeln('<info>Successfully removed ' . $fields_removed . ' EXIF fields.</info>');
     } else {
       $this->output()->writeln('<comment>No EXIF fields found to remove.</comment>');
+    }
+  }
+
+  /**
+   * Queue EXIF field removal for media types (background processing).
+   *
+   * @param array $options
+   *   An associative array of options.
+   *
+   * @option media-types
+   *   Comma-separated list of media type IDs to remove fields from.
+   * @option all-exif-fields
+   *   Remove all EXIF fields from the specified media types.
+   * @option field-names
+   *   Comma-separated list of specific field names to remove.
+   * @option dry-run
+   *   Show what would be removed without actually queuing the tasks.
+   *
+   * @command media-attributes:queue-remove-fields
+   * @aliases ma:qrf
+   * @usage media-attributes:queue-remove-fields --media-types=photo,gallery --all-exif-fields
+   *   Queue removal of all EXIF fields from 'photo' and 'gallery' media types.
+   * @usage media-attributes:queue-remove-fields --media-types=photo --field-names=field_exif_make,field_exif_model
+   *   Queue removal of specific EXIF fields from 'photo' media type.
+   * @usage media-attributes:queue-remove-fields --media-types=photo --all-exif-fields --dry-run
+   *   Show what EXIF fields would be removed without actually queuing.
+   */
+  public function queueRemoveFields(array $options = [
+    'media-types' => NULL,
+    'all-exif-fields' => FALSE,
+    'field-names' => NULL,
+    'dry-run' => FALSE,
+  ]) {
+    if (empty($options['media-types'])) {
+      $this->output()->writeln('<error>Please specify media types with --media-types option.</error>');
+      return;
+    }
+
+    $media_type_ids = array_map('trim', explode(',', $options['media-types']));
+    $fields_to_remove = [];
+
+    // Determine which fields to remove
+    if ($options['all-exif-fields']) {
+      // Get all EXIF fields from the specified media types
+      $field_manager = \Drupal::service('entity_field.manager');
+
+      foreach ($media_type_ids as $media_type_id) {
+        $field_definitions = $field_manager->getFieldDefinitions('media', $media_type_id);
+
+        foreach ($field_definitions as $field_name => $field_definition) {
+          if (strpos($field_name, 'field_exif_') === 0) {
+            $fields_to_remove[] = $field_name;
+          }
+        }
+      }
+
+      // Remove duplicates
+      $fields_to_remove = array_unique($fields_to_remove);
+
+    } elseif (!empty($options['field-names'])) {
+      $fields_to_remove = array_map('trim', explode(',', $options['field-names']));
+    } else {
+      $this->output()->writeln('<error>Please specify either --all-exif-fields or --field-names option.</error>');
+      return;
+    }
+
+    if (empty($fields_to_remove)) {
+      $this->output()->writeln('<comment>No EXIF fields found to remove.</comment>');
+      return;
+    }
+
+    $this->output()->writeln('<info>Fields to remove: ' . implode(', ', $fields_to_remove) . '</info>');
+    $this->output()->writeln('<info>Media types: ' . implode(', ', $media_type_ids) . '</info>');
+
+    if ($options['dry-run']) {
+      $this->output()->writeln('<comment>DRY RUN: No actual removal tasks will be queued.</comment>');
+      return;
+    }
+
+    try {
+      $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+      $removal_queue_manager->queueFieldRemovalTasks([], $fields_to_remove, $media_type_ids);
+
+      $this->output()->writeln('<info>Successfully queued field removal tasks. Fields will be removed in the background.</info>');
+      $this->output()->writeln('<comment>Use "drush ma:removal-status" to check progress.</comment>');
+
+    } catch (\Exception $e) {
+      $this->output()->writeln('<error>Error queuing field removal: ' . $e->getMessage() . '</error>');
+      $this->logger()->error('Error queuing field removal: @error', ['@error' => $e->getMessage()]);
+    }
+  }
+
+  /**
+   * Show EXIF field removal queue status.
+   *
+   * @command media-attributes:removal-status
+   * @aliases ma:rs
+   * @usage media-attributes:removal-status
+   *   Show the current status of field removal queue.
+   */
+  public function removalStatus() {
+    $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+
+    $queue_info = $removal_queue_manager->getQueueInfo();
+    $progress = $removal_queue_manager->getFieldRemovalProgress();
+
+    $this->output()->writeln('=== EXIF Field Removal Queue Status ===');
+    $this->output()->writeln('Queue name: ' . $queue_info['name']);
+    $this->output()->writeln('Items in queue: ' . $queue_info['number_of_items']);
+    $this->output()->writeln('Removal in progress: ' . ($progress['in_progress'] ? 'Yes' : 'No'));
+
+    if ($progress['in_progress']) {
+      $this->output()->writeln('Total tasks: ' . $progress['total_tasks']);
+      $this->output()->writeln('Processed tasks: ' . $progress['processed_tasks']);
+      $this->output()->writeln('Progress: ' . $progress['progress_percentage'] . '%');
+
+      if ($progress['start_time']) {
+        $elapsed = time() - $progress['start_time'];
+        $this->output()->writeln('Elapsed time: ' . gmdate('H:i:s', $elapsed));
+      }
+    }
+  }
+
+  /**
+   * Process EXIF field removal queue manually.
+   *
+   * @param array $options
+   *   An associative array of options.
+   *
+   * @option max-items
+   *   Maximum number of queue items to process (default: 10).
+   *
+   * @command media-attributes:process-removal-queue
+   * @aliases ma:prq
+   * @usage media-attributes:process-removal-queue
+   *   Process up to 10 field removal queue items.
+   * @usage media-attributes:process-removal-queue --max-items=50
+   *   Process up to 50 field removal queue items.
+   */
+  public function processRemovalQueue(array $options = ['max-items' => 10]) {
+    $max_items = (int) $options['max-items'];
+
+    if ($max_items <= 0) {
+      $this->output()->writeln('<error>Max items must be greater than 0.</error>');
+      return;
+    }
+
+    $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+
+    $this->output()->writeln('<info>Processing field removal queue (max: ' . $max_items . ' items)...</info>');
+
+    $processed = $removal_queue_manager->processQueue($max_items);
+
+    if ($processed > 0) {
+      $this->output()->writeln('<info>Successfully processed ' . $processed . ' field removal tasks.</info>');
+    } else {
+      $this->output()->writeln('<comment>No field removal tasks found in queue.</comment>');
+    }
+
+    // Show updated status
+    $this->removalStatus();
+  }
+
+  /**
+   * Clear stuck field removal queue items.
+   *
+   * @command media-attributes:clear-stuck-removal-queue
+   * @aliases ma:csrq
+   * @usage media-attributes:clear-stuck-removal-queue
+   *   Clear all items from the field removal queue and reset progress.
+   */
+  public function clearStuckRemovalQueue() {
+    $removal_queue_manager = \Drupal::service('media_attributes_manager.exif_field_removal_queue_manager');
+
+    $cleared = $removal_queue_manager->clearStuckItems();
+
+    if ($cleared > 0) {
+      $this->output()->writeln('<info>Cleared ' . $cleared . ' stuck field removal queue items.</info>');
+    } else {
+      $this->output()->writeln('<comment>No stuck field removal queue items found.</comment>');
     }
   }
 

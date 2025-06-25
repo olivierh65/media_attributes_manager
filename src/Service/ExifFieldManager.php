@@ -13,12 +13,14 @@ use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\media\Entity\MediaType;
+use Drupal\media_attributes_manager\Traits\ExifFieldDefinitionsTrait;
 
 /**
  * Service for managing EXIF-related fields on media entities.
  */
 class ExifFieldManager {
   use StringTranslationTrait;
+  use ExifFieldDefinitionsTrait;
 
   /**
    * The config factory service.
@@ -191,7 +193,7 @@ class ExifFieldManager {
       ]);
 
       // Define field type mapping for each EXIF data type
-      $field_type_map = $this->getFieldTypeMap();
+      $field_type_map = static::getExifFieldTypeMap();
 
       $type_fields_created = 0;
       $type_fields_skipped = 0;
@@ -199,7 +201,7 @@ class ExifFieldManager {
       // Create fields for each selected EXIF data
       foreach ($selected_exif as $exif_key) {
         if (isset($field_type_map[$exif_key])) {
-          $field_name = $this->generateFieldName($exif_key);
+          $field_name = static::generateExifFieldName($exif_key);
 
           // Check if the field already exists
           if (!isset($field_definitions[$field_name])) {
@@ -297,8 +299,8 @@ class ExifFieldManager {
 
     try {
       // Get the field labels from the map
-      $field_labels = $this->getFieldLabelMap();
-      $label = $field_labels[$exif_key] ?? $this->t('EXIF @key', ['@key' => str_replace('_', ' ', $exif_key)]);
+      $field_labels = static::getExifFieldLabelMap();
+      $label = isset($field_labels[$exif_key]) ? $this->t($field_labels[$exif_key]) : $this->t('EXIF @key', ['@key' => str_replace('_', ' ', $exif_key)]);
 
       $this->logger->debug('Field label determined: @label', ['@label' => $label]);
 
@@ -498,12 +500,12 @@ class ExifFieldManager {
       $field_definitions = $this->entityFieldManager->getFieldDefinitions('media', $type_id);
 
       // Define field type mapping for each EXIF data type
-      $field_type_map = $this->getFieldTypeMap();
+      $field_type_map = static::getExifFieldTypeMap();
 
       // Create fields for each selected EXIF data
       foreach ($selected_exif as $exif_key) {
         if (isset($field_type_map[$exif_key])) {
-          $field_name = $this->generateFieldName($exif_key);
+          $field_name = static::generateExifFieldName($exif_key);
 
           // Check if the field already exists
           if (!isset($field_definitions[$field_name])) {
@@ -579,12 +581,12 @@ class ExifFieldManager {
       $field_definitions = $this->entityFieldManager->getFieldDefinitions('media', $type_id);
 
       // Define field type mapping for each EXIF data type
-      $field_type_map = $this->getFieldTypeMap();
+      $field_type_map = static::getExifFieldTypeMap();
 
       // Create fields for each selected EXIF data
       foreach ($selected_exif as $exif_key) {
         if (isset($field_type_map[$exif_key])) {
-          $field_name = $this->generateFieldName($exif_key);
+          $field_name = static::generateExifFieldName($exif_key);
 
           // Check if the field already exists
           if (!isset($field_definitions[$field_name])) {
@@ -620,85 +622,6 @@ class ExifFieldManager {
     ]);
 
     return $fields_created;
-  }
-
-  /**
-   * Generate a clean field name for an EXIF key.
-   *
-   * @param string $exif_key
-   *   The EXIF key.
-   *
-   * @return string
-   *   The clean field name.
-   */
-  protected function generateFieldName($exif_key) {
-    // Remove 'exif_' prefix if already present to avoid duplication
-    $clean_exif_key = preg_replace('/^exif_/', '', $exif_key);
-    return 'field_exif_' . $clean_exif_key;
-  }
-
-  /**
-   * Get the field type mapping for EXIF data.
-   *
-   * @return array
-   *   An array mapping EXIF keys to field types.
-   */
-  protected function getFieldTypeMap() {
-    return [
-      'computed_height' => ['type' => 'integer'],
-      'computed_width' => ['type' => 'integer'],
-      'make' => ['type' => 'string'],
-      'model' => ['type' => 'string'],
-      'orientation' => ['type' => 'integer'],
-      'datetime_original' => ['type' => 'datetime', 'settings' => ['datetime_type' => 'datetime']],
-      'datetime_digitized' => ['type' => 'datetime', 'settings' => ['datetime_type' => 'datetime']],
-      'exif_image_width' => ['type' => 'integer'],
-      'exif_image_length' => ['type' => 'integer'],
-      'exposure' => ['type' => 'string'],
-      'aperture' => ['type' => 'string'],
-      'iso' => ['type' => 'integer'],
-      'focal_length' => ['type' => 'string'],
-      'gps_latitude' => ['type' => 'string'],
-      'gps_longitude' => ['type' => 'string'],
-      'gps_altitude' => ['type' => 'string'],
-      'gps_date' => ['type' => 'datetime', 'settings' => ['datetime_type' => 'datetime']],
-      'gps_coordinates' => ['type' => 'string'],
-      'software' => ['type' => 'string'],
-      'copyright' => ['type' => 'string'],
-      'artist' => ['type' => 'string'],
-    ];
-  }
-
-  /**
-   * Get the field label mapping for EXIF data.
-   *
-   * @return array
-   *   An array mapping EXIF keys to human-readable labels.
-   */
-  protected function getFieldLabelMap() {
-    return [
-      'computed_height' => $this->t('Image Height'),
-      'computed_width' => $this->t('Image Width'),
-      'make' => $this->t('Camera Make'),
-      'model' => $this->t('Camera Model'),
-      'orientation' => $this->t('Orientation'),
-      'datetime_original' => $this->t('Original Date/Time'),
-      'datetime_digitized' => $this->t('Digitized Date/Time'),
-      'exif_image_width' => $this->t('EXIF Image Width'),
-      'exif_image_length' => $this->t('EXIF Image Height'),
-      'exposure' => $this->t('Exposure Time'),
-      'aperture' => $this->t('Aperture'),
-      'iso' => $this->t('ISO Speed'),
-      'focal_length' => $this->t('Focal Length'),
-      'gps_latitude' => $this->t('GPS Latitude'),
-      'gps_longitude' => $this->t('GPS Longitude'),
-      'gps_altitude' => $this->t('GPS Altitude'),
-      'gps_date' => $this->t('GPS Date/Time'),
-      'gps_coordinates' => $this->t('GPS Coordinates'),
-      'software' => $this->t('Software'),
-      'copyright' => $this->t('Copyright'),
-      'artist' => $this->t('Artist/Author'),
-    ];
   }
 
   /**
@@ -761,10 +684,6 @@ class ExifFieldManager {
    *   Number of fields that would be created.
    */
   public function countFieldsToCreate(array $selected_exif, array $enabled_media_types, bool $auto_create_enabled) {
-    if (!$auto_create_enabled) {
-      return 0;
-    }
-
     if (empty($selected_exif)) {
       return 0;
     }
@@ -793,12 +712,12 @@ class ExifFieldManager {
       $field_definitions = $this->entityFieldManager->getFieldDefinitions('media', $type_id);
 
       // Define field type mapping for each EXIF data type
-      $field_type_map = $this->getFieldTypeMap();
+      $field_type_map = static::getExifFieldTypeMap();
 
       // Count fields for each selected EXIF data
       foreach ($selected_exif as $exif_key) {
         if (isset($field_type_map[$exif_key])) {
-          $field_name = $this->generateFieldName($exif_key);
+          $field_name = static::generateExifFieldName($exif_key);
 
           // Check if the field already exists
           if (!isset($field_definitions[$field_name])) {
@@ -846,13 +765,7 @@ class ExifFieldManager {
     ]);
 
     // Get all possible EXIF field names
-    $exif_fields = [
-      'computed_height', 'computed_width',
-      'make', 'model', 'orientation', 'software', 'copyright', 'artist',
-      'datetime_original', 'datetime_digitized', 'exif_image_width', 'exif_image_length',
-      'exposure', 'aperture', 'iso', 'focal_length',
-      'gps_latitude', 'gps_longitude', 'gps_altitude', 'gps_date', 'gps_coordinates',
-    ];
+    $exif_fields = static::getExifFieldKeys();
 
     foreach ($media_type_ids as $media_type_id) {
       // Check if media type exists
@@ -863,7 +776,7 @@ class ExifFieldManager {
       }
 
       foreach ($exif_fields as $exif_key) {
-        $field_name = $this->generateFieldName($exif_key);
+        $field_name = static::generateExifFieldName($exif_key);
         
         try {
           // Check if field config exists for this bundle
@@ -941,6 +854,97 @@ class ExifFieldManager {
         '@field' => $field_name,
         '@error' => $e->getMessage(),
       ]);
+    }
+  }
+
+  /**
+   * Check if a field exists on a media type.
+   *
+   * @param string $media_type_id
+   *   The media type ID.
+   * @param string $field_name
+   *   The field name.
+   *
+   * @return bool
+   *   TRUE if the field exists, FALSE otherwise.
+   */
+  public function fieldExists($media_type_id, $field_name) {
+    $field_definitions = \Drupal::service('entity_field.manager')
+      ->getFieldDefinitions('media', $media_type_id);
+    
+    return isset($field_definitions[$field_name]);
+  }
+
+  /**
+   * Remove an EXIF field from a media type.
+   *
+   * @param string $media_type_id
+   *   The media type ID.
+   * @param string $field_name
+   *   The field name to remove.
+   *
+   * @return bool
+   *   TRUE if the field was successfully removed, FALSE otherwise.
+   */
+  public function removeExifField($media_type_id, $field_name) {
+    try {
+      // Check if field exists
+      if (!$this->fieldExists($media_type_id, $field_name)) {
+        $this->logger->warning('Field @field does not exist on media type @type', [
+          '@field' => $field_name,
+          '@type' => $media_type_id
+        ]);
+        return TRUE; // Consider it successful if field doesn't exist
+      }
+
+      // Load the field config
+      $field_storage_id = "media.$field_name";
+      $field_config_id = "media.$media_type_id.$field_name";
+
+      $field_config = \Drupal::entityTypeManager()
+        ->getStorage('field_config')
+        ->load($field_config_id);
+
+      if ($field_config) {
+        $this->logger->debug('Removing field config: @id', ['@id' => $field_config_id]);
+        $field_config->delete();
+      }
+
+      // Check if this was the last instance of this field
+      $remaining_instances = \Drupal::entityTypeManager()
+        ->getStorage('field_config')
+        ->loadByProperties(['field_name' => $field_name]);
+
+      // If no more instances, remove the field storage
+      if (empty($remaining_instances)) {
+        $field_storage = \Drupal::entityTypeManager()
+          ->getStorage('field_storage_config')
+          ->load($field_storage_id);
+
+        if ($field_storage) {
+          $this->logger->debug('Removing field storage: @id', ['@id' => $field_storage_id]);
+          $field_storage->delete();
+        }
+      }
+
+      // Purge field data
+      field_purge_batch(10);
+
+      $this->logger->info('Successfully removed EXIF field @field from media type @type', [
+        '@field' => $field_name,
+        '@type' => $media_type_id
+      ]);
+
+      return TRUE;
+
+    } catch (\Exception $e) {
+      $this->logger->error('Error removing EXIF field @field from media type @type: @error', [
+        '@field' => $field_name,
+        '@type' => $media_type_id,
+        '@error' => $e->getMessage()
+      ]);
+
+      return FALSE;
     }
   }
 

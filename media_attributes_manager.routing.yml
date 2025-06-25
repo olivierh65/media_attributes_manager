@@ -60,3 +60,19 @@ media_attributes_manager.exif_progress_status:
   requirements:
     _permission: 'administer media'
   methods: [GET]
+
+media_attributes_manager.exif_field_removal_progress:
+  path: '/media-attributes/exif-field-removal-progress'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\ExifFieldRemovalProgressController::getProgress'
+    _title: 'EXIF Field Removal Progress'
+  requirements:
+    _permission: 'administer media'
+
+media_attributes_manager.clear_stuck_removal_queue:
+  path: '/media-attributes/clear-stuck-removal-queue'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\ExifFieldRemovalProgressController::clearStuckItems'
+    _title: 'Clear Stuck Removal Queue'
+  requirements:
+    _permission: 'administer media'
