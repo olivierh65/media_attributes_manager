@@ -1713,7 +1713,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $exif_service = \Drupal::service('media_attributes_manager.exif_data_manager');
     $updated_count = $exif_service->applyExifData($selected_media_ids);
 
-    // Message de confirmation
+    // Message de
     if ($updated_count > 0) {
       $message = \Drupal::translation()->formatPlural(
         $updated_count,
@@ -1732,5 +1732,138 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     // Forcer le rebuild du formulaire pour AJAX (même si pas nécessaire puisque les médias sont modifiés en base)
     $form_state->setRebuild(TRUE);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function massageFormValues(array $values, array $form, FormStateInterface $form_state) {
+    // Log input values for debugging
+    \Drupal::logger('media_attributes_manager')->debug('massageFormValues input: @values', [
+      '@values' => json_encode($values, JSON_PRETTY_PRINT)
+    ]);
+
+    // Get the field definition to check allowed target bundles
+    $field_definition = $this->fieldDefinition;
+    $handler_settings = $field_definition->getSetting('handler_settings');
+    $allowed_bundles = $handler_settings['target_bundles'] ?? [];
+
+    \Drupal::logger('media_attributes_manager')->debug('Allowed bundles: @bundles', [
+      '@bundles' => implode(', ', $allowed_bundles)
+    ]);
+
+    // If no target bundles are specified, allow all - delegate to parent
+    if (empty($allowed_bundles)) {
+      $result = parent::massageFormValues($values, $form, $form_state);
+      \Drupal::logger('media_attributes_manager')->debug('No target bundles restriction, returning: @result', [
+        '@result' => json_encode($result, JSON_PRETTY_PRINT)
+      ]);
+      return $result;
+    }
+
+    // Extract the media IDs from the parent format: 'media:123 media:456 media:789'
+    $media_ids = [];
+    if (!empty($values['target_id'])) {
+      $entities = explode(' ', trim($values['target_id']));
+      foreach ($entities as $entity) {
+        $parts = explode(':', $entity);
+        if (count($parts) === 2 && $parts[0] === 'media' && is_numeric($parts[1])) {
+          $media_ids[] = $parts[1];
+        }
+      }
+    }
+
+    \Drupal::logger('media_attributes_manager')->debug('Extracted media IDs: @ids', [
+      '@ids' => implode(', ', $media_ids)
+    ]);
+
+    // Filter media IDs based on allowed bundles
+    $entity_type_manager = \Drupal::entityTypeManager();
+    $allowed_media_ids = [];
+    $filtered_count = 0;
+
+    foreach ($media_ids as $media_id) {
+      try {
+        $media = $entity_type_manager->getStorage('media')->load($media_id);
+        
+        if ($media && in_array($media->bundle(), $allowed_bundles)) {
+          // Media type is allowed, keep it
+          $allowed_media_ids[] = $media_id;
+          \Drupal::logger('media_attributes_manager')->debug('Keeping media ID @id (@type)', [
+            '@id' => $media_id,
+            '@type' => $media->bundle()
+          ]);
+        } else {
+          // Media type is not allowed, filter it out
+          $filtered_count++;
+          
+          // Log the filtered media for debugging
+          \Drupal::logger('media_attributes_manager')->info('Filtered out media ID @id with type @type (not in allowed types: @allowed)', [
+            '@id' => $media_id,
+            '@type' => $media ? $media->bundle() : 'unknown',
+            '@allowed' => implode(', ', $allowed_bundles),
+          ]);
+        }
+      } catch (\Exception $e) {
+        // If we can't load the media, filter it out
+        $filtered_count++;
+        \Drupal::logger('media_attributes_manager')->warning('Could not load media ID @id, filtering out: @error', [
+          '@id' => $media_id,
+          '@error' => $e->getMessage(),
+        ]);
+      }
+    }
+
+    // Show message if any media were filtered
+    if ($filtered_count > 0) {
+      $message = \Drupal::translation()->formatPlural(
+        $filtered_count,
+        'One media item was filtered out because its type is not allowed in this field.',
+        '@count media items were filtered out because their types are not allowed in this field.'
+      );
+      \Drupal::messenger()->addWarning($message);
+      
+      // Also show which types are allowed
+      $media_type_storage = $entity_type_manager->getStorage('media_type');
+      $allowed_type_labels = [];
+      foreach ($allowed_bundles as $bundle) {
+        $media_type = $media_type_storage->load($bundle);
+        if ($media_type) {
+          $allowed_type_labels[] = $media_type->label();
+        }
+      }
+      
+      if (!empty($allowed_type_labels)) {
+        \Drupal::messenger()->addMessage($this->t('This field only accepts the following media types: @types', [
+          '@types' => implode(', ', $allowed_type_labels),
+        ]), 'status');
+      }
+    }
+
+    // Reconstruct the target_id string in the format expected by the parent widget
+    $filtered_target_id = '';
+    if (!empty($allowed_media_ids)) {
+      $formatted_ids = array_map(function($id) {
+        return "media:$id";
+      }, $allowed_media_ids);
+      $filtered_target_id = implode(' ', $formatted_ids);
+    }
+
+    // Create the filtered values array in the format expected by the parent
+    $filtered_values = ['target_id' => $filtered_target_id];
+
+    \Drupal::logger('media_attributes_manager')->debug('Before parent::massageFormValues - filtered target_id: @target_id (count: @count)', [
+      '@target_id' => $filtered_target_id,
+      '@count' => count($allowed_media_ids)
+    ]);
+
+    $result = parent::massageFormValues($filtered_values, $form, $form_state);
+    
+    \Drupal::logger('media_attributes_manager')->debug('After parent::massageFormValues - result: @result (count: @count)', [
+      '@result' => json_encode($result, JSON_PRETTY_PRINT),
+      '@count' => count($result)
+    ]);
+
+    return $result;
   }
 }
