@@ -247,12 +247,15 @@ trait CustomFieldsTrait {
           ],
         ];
         // Ajouter la checkbox "Clear" en premier (à gauche)
+        // Désactiver la checkbox Clear pour les champs EXIF
+        $is_exif_field = $this->isExifField($field_name);
         $form[$bundle][$field_name . '_group'][$field_name . '_clear'] = [
           '#type' => 'checkbox',
           '#title' => $this->t('Clear'),
           '#default_value' => FALSE,
+          '#disabled' => $is_exif_field,
           '#attributes' => [
-            'class' => ['compact-checkbox'],
+            'class' => ['compact-checkbox', $is_exif_field ? 'exif-clear-disabled' : ''],
             'data-field-name' => $field_name . '_clear',
             'data-related-field' => $field_name,
             'data-bundle' => $bundle,
@@ -261,6 +264,10 @@ trait CustomFieldsTrait {
           '#suffix' => '</div>',
           '#title_display' => 'after',
         ];
+
+        if ($is_exif_field) {
+          $form[$bundle][$field_name . '_group'][$field_name . '_clear']['#description'] = $this->t('Cannot clear EXIF fields.');
+        }
 
         // Créer un conteneur pour le champ principal
         $field_wrapper_class = 'field-container';
@@ -284,55 +291,81 @@ trait CustomFieldsTrait {
         ];
 
         // Créer un champ de formulaire adapté au type et aux valeurs multiples
+        // Les champs EXIF sont en lecture seule car ils seront écrasés lors de la prochaine extraction EXIF
+        $is_exif_field = $this->isExifField($field_name);
+        
         switch ($type) {
           case 'string':
           case 'string_long':
           case 'text':
           case 'text_long':
           case 'text_with_summary':
-            // Si plusieurs valeurs, créer un select2 avec options et possibilité de saisie libre
-            if (count($values) > 1) {
-              $options = array_combine($values, $values);
-              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-                '#type' => 'select2',
-                '#title' => $definition->getLabel(),
-                '#options' => $options,
-                '#empty_option' => $this->t('- Select -'),
-                '#attributes' => [
-                  'class' => ['compact-field', 'bulk-edit-select2'],
-                  'data-field-name' => $field_name,
-                  'data-field-type' => $type,
-                  'data-bundle' => $bundle,
-                ],
-                '#select2' => [
-                  'placeholder' => $this->t('Select or type a new value'),
-                  'allowClear' => TRUE,
-                  'tags' => TRUE,
-                  'width' => '100%',
-                  'dropdownAutoWidth' => TRUE,
-                   // voir autres parametres dans le fichier js
-                ],
-                '#prefix' => '<div class="field-main">',
-                '#suffix' => '</div>',
-                '#title_display' => 'before',
-              ];
-            } else {
-              // Sinon un simple champ texte
+            if ($is_exif_field) {
+              // Champ EXIF en lecture seule
               $single_value = !empty($values) ? reset($values) : '';
               $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
                 '#type' => 'textfield',
-                '#title' => $definition->getLabel(),
+                '#title' => $definition->getLabel() . ' ' . $this->t('(EXIF - Read Only)'),
                 '#default_value' => $single_value,
+                '#disabled' => TRUE,
                 '#attributes' => [
-                  'class' => ['compact-field'],
+                  'class' => ['compact-field', 'exif-field-readonly'],
                   'data-field-name' => $field_name,
                   'data-field-type' => $type,
                   'data-bundle' => $bundle,
+                  'readonly' => 'readonly',
                 ],
-                '#prefix' => '<div class="field-main">',
+                '#prefix' => '<div class="field-main exif-readonly">',
                 '#suffix' => '</div>',
                 '#title_display' => 'before',
+                '#description' => $this->t('This field contains EXIF data and cannot be edited manually. Any changes will be overwritten when EXIF data is re-extracted.'),
               ];
+            } else {
+              // Champ normal éditable
+              // Si plusieurs valeurs, créer un select2 avec options et possibilité de saisie libre
+              if (count($values) > 1) {
+                $options = array_combine($values, $values);
+                $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                  '#type' => 'select2',
+                  '#title' => $definition->getLabel(),
+                  '#options' => $options,
+                  '#empty_option' => $this->t('- Select -'),
+                  '#attributes' => [
+                    'class' => ['compact-field', 'bulk-edit-select2'],
+                    'data-field-name' => $field_name,
+                    'data-field-type' => $type,
+                    'data-bundle' => $bundle,
+                  ],
+                  '#select2' => [
+                    'placeholder' => $this->t('Select or type a new value'),
+                    'allowClear' => TRUE,
+                    'tags' => TRUE,
+                    'width' => '100%',
+                    'dropdownAutoWidth' => TRUE,
+                     // voir autres parametres dans le fichier js
+                  ],
+                  '#prefix' => '<div class="field-main">',
+                  '#suffix' => '</div>',
+                  '#title_display' => 'before',
+                ];
+              } else {
+                // Sinon un simple champ texte
+                $single_value = !empty($values) ? reset($values) : '';
+                $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                  '#type' => 'textfield',
+                  '#title' => $definition->getLabel(),
+                  '#default_value' => $single_value,
+                  '#attributes' => [
+                    'class' => ['compact-field'],
+                    'data-field-name' => $field_name,
+                    'data-field-type' => $type,
+                    'data-bundle' => $bundle,
+                  ],
+                  '#prefix' => '<div class="field-main">',
+                  '#suffix' => '</div>',
+                  '#title_display' => 'before',
+                ];
+              }
             }
             break;
 
@@ -348,20 +381,41 @@ trait CustomFieldsTrait {
               }
             }
 
-            $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-              '#type' => 'checkbox',
-              '#title' => $definition->getLabel(),
-              '#default_value' => $default_value ?? FALSE,
-              '#attributes' => [
-                'class' => ['compact-field'],
-                'data-field-name' => $field_name,
-                'data-field-type' => $type,
-                'data-bundle' => $bundle,
-              ],
-              '#prefix' => '<div class="field-main">',
-              '#suffix' => '</div>',
-              '#title_display' => 'before',
-            ];
+            if ($is_exif_field) {
+              // Champ EXIF booléen en lecture seule
+              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                '#type' => 'checkbox',
+                '#title' => $definition->getLabel() . ' ' . $this->t('(EXIF - Read Only)'),
+                '#default_value' => $default_value ?? FALSE,
+                '#disabled' => TRUE,
+                '#attributes' => [
+                  'class' => ['compact-field', 'exif-field-readonly'],
+                  'data-field-name' => $field_name,
+                  'data-field-type' => $type,
+                  'data-bundle' => $bundle,
+                ],
+                '#prefix' => '<div class="field-main exif-readonly">',
+                '#suffix' => '</div>',
+                '#title_display' => 'before',
+                '#description' => $this->t('This field contains EXIF data and cannot be edited manually.'),
+              ];
+            } else {
+              // Champ booléen normal éditable
+              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                '#type' => 'checkbox',
+                '#title' => $definition->getLabel(),
+                '#default_value' => $default_value ?? FALSE,
+                '#attributes' => [
+                  'class' => ['compact-field'],
+                  'data-field-name' => $field_name,
+                  'data-field-type' => $type,
+                  'data-bundle' => $bundle,
+                ],
+                '#prefix' => '<div class="field-main">',
+                '#suffix' => '</div>',
+                '#title_display' => 'before',
+              ];
+            }
             break;
           case 'entity_reference':
             $target_type = $definition->getFieldStorageDefinition()->getSetting('target_type');
@@ -432,20 +486,43 @@ trait CustomFieldsTrait {
           default:
             // Pour tous les autres types, utiliser un champ texte simple
             $single_value = !empty($values) ? reset($values) : '';
-            $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
-              '#type' => 'textfield',
-              '#title' => $definition->getLabel(),
-              '#default_value' => $single_value,
-              '#attributes' => [
-                'class' => ['compact-field'],
-                'data-field-name' => $field_name,
-                'data-field-type' => $type,
-                'data-bundle' => $bundle,
-              ],
-              '#prefix' => '<div class="field-main">',
-              '#suffix' => '</div>',
-              '#title_display' => 'before',
-            ];
+            
+            if ($is_exif_field) {
+              // Champ EXIF en lecture seule
+              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                '#type' => 'textfield',
+                '#title' => $definition->getLabel() . ' ' . $this->t('(EXIF - Read Only)'),
+                '#default_value' => $single_value,
+                '#disabled' => TRUE,
+                '#attributes' => [
+                  'class' => ['compact-field', 'exif-field-readonly'],
+                  'data-field-name' => $field_name,
+                  'data-field-type' => $type,
+                  'data-bundle' => $bundle,
+                  'readonly' => 'readonly',
+                ],
+                '#prefix' => '<div class="field-main exif-readonly">',
+                '#suffix' => '</div>',
+                '#title_display' => 'before',
+                '#description' => $this->t('This field contains EXIF data and cannot be edited manually. Any changes will be overwritten when EXIF data is re-extracted.'),
+              ];
+            } else {
+              // Champ normal éditable
+              $form[$bundle][$field_name . '_group'][$field_name . '_wrapper'][$field_name] = [
+                '#type' => 'textfield',
+                '#title' => $definition->getLabel(),
+                '#default_value' => $single_value,
+                '#attributes' => [
+                  'class' => ['compact-field'],
+                  'data-field-name' => $field_name,
+                  'data-field-type' => $type,
+                  'data-bundle' => $bundle,
+                ],
+                '#prefix' => '<div class="field-main">',
+                '#suffix' => '</div>',
+                '#title_display' => 'before',
+              ];
+            }
             break;
         }
       }
@@ -551,4 +628,19 @@ trait CustomFieldsTrait {
     }
     return $values;
   }
+
+  /**
+   * Vérifie si un champ est un champ EXIF.
+   *
+   * @param string $field_name
+   *   Le nom machine du champ.
+   *
+   * @return bool
+   *   TRUE si c'est un champ EXIF, FALSE sinon.
+   */
+  protected function isExifField($field_name) {
+    // Les champs EXIF commencent par 'field_exif_'
+    return strpos($field_name, 'field_exif_') === 0;
+  }
+
 }

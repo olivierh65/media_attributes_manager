@@ -15,6 +15,7 @@ use Drupal\image\Entity\ImageStyle;
 use Drupal\Core\File\FileUrlGenerator;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
+use Drupal\media_attributes_manager\Traits\WidgetUpdateTrait;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\media\MediaInterface;
 
@@ -33,6 +34,7 @@ use Drupal\media\MediaInterface;
 
 class MediaAttributesWidget extends EntityReferenceBrowserWidget {
   use CustomFieldsTrait;
+  use WidgetUpdateTrait;
 
   /**
    * Profondeur du bouton de suppression dans l'arborescence du formulaire.
@@ -315,6 +317,8 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       '#attributes' => ['data-entity-ids' => $ids_string],
     ];
 
+
+
     // Classes sur le conteneur principal
     $render_array['#attributes']['class'] = [
       'entities-list',
@@ -344,7 +348,9 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           break;
         }
       }
-    }    // regroupe les boutons d'action et ajoute la checkbox de sélection
+    }
+
+    // regroupe les boutons d'action et ajoute la checkbox de sélection
     foreach ($render_array['items'] as $key => &$item) {
       $item['buttons']['edit_button'] = $item['edit_button'];
       $item['buttons']['remove_button'] = $item['remove_button'];
@@ -582,6 +588,9 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
+    // Note: Bulk action buttons are handled by processBulkButtons() method
+    // which is called via the process callback in formElement()
+
 
     return $render_array;
   }
@@ -607,45 +616,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $triggering_element = $form_state->getTriggeringElement();
     $user_input = $form_state->getUserInput();
     $selected_media_ids = [];
-    $field_name = '';
 
     \Drupal::logger('media_attributes_manager')->debug('Bulk remove triggered');
 
-    // Récupérer le nom du champ depuis le bouton déclencheur
-    if (!empty($triggering_element['#attributes']['data-field-name'])) {
-      $field_name = $triggering_element['#attributes']['data-field-name'];
-      \Drupal::logger('media_attributes_manager')->debug('Field name from button attribute: @field', [
-        '@field' => $field_name
-      ]);
-    }
-    // Si pas trouvé, essayer de l'identifier à partir des parents du bouton
-    else {
-      // Analyser les parents du bouton pour trouver le nom du champ
-      if (!empty($triggering_element['#array_parents'])) {
-        foreach ($triggering_element['#array_parents'] as $parent) {
-          if (strpos($parent, 'field_') === 0) {
-            $field_name = $parent;
-            break;
-          }
-        }
-        \Drupal::logger('media_attributes_manager')->debug('Field name from array parents: @field', [
-          '@field' => $field_name
-        ]);
-      }
-    }
-
-    // Si on n'a toujours pas trouvé le nom du champ, essayer de le déduire du nom du bouton
-    if (empty($field_name) && !empty($triggering_element['#name'])) {
-      $button_name = $triggering_element['#name'];
-      if (strpos($button_name, 'bulk_remove_field_') === 0) {
-        $field_name = substr($button_name, strlen('bulk_remove_'));
-        \Drupal::logger('media_attributes_manager')->debug('Field name from button name: @field', [
-          '@field' => $field_name
-        ]);
-      }
-    }
-
-    // Si on n'a pas pu identifier le champ, sortir avec un message d'erreur
+    // Utiliser le trait pour identifier le champ
+    $field_name = static::getFieldNameFromTrigger($triggering_element);
     if (empty($field_name)) {
       \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for bulk removal."));
       return;
@@ -745,113 +720,34 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       $entity = $form_object->getEntity();
     }
 
-    // Déterminer le wrapper AJAX pour la mise à jour de l'interface
-    $field_wrapper_id = 'edit-' . str_replace('_', '-', $field_name) . '-wrapper';
-
-    // Mettre à jour le wrapper AJAX dans le bouton déclencheur si nécessaire
-    if (isset($triggering_element['#ajax'])) {
-      $triggering_element['#ajax']['wrapper'] = $field_wrapper_id;
+    if (!$entity || !$entity->hasField($field_name)) {
+      \Drupal::messenger()->addError(new TranslatableMarkup('Cannot access entity field for removal.'));
+      return;
     }
 
-    // Stocker les IDs de médias supprimés pour le traitement AJAX
-    $storage = $form_state->getStorage();
-    $storage['media_removed_bulk'] = $selected_media_ids;
-    $storage['field_name'] = $field_name;
-    $form_state->setStorage($storage);
+    // Construire la nouvelle liste des valeurs du champ (en excluant les IDs sélectionnés)
+    $field_items = $entity->get($field_name);
+    $current_values = $field_items->getValue();
+    $updated_values = [];
 
-    // Si nous avons accès à l'entité, mettre à jour directement ses valeurs de champ
-    if ($entity && $entity->hasField($field_name)) {
-      $field_items = $entity->get($field_name);
-      $current_values = $field_items->getValue();
-      $updated_values = [];
-
-      foreach ($current_values as $delta => $value) {
-        if (isset($value['target_id']) && !in_array($value['target_id'], $selected_media_ids)) {
-          $updated_values[] = $value;
-        }
-      }
-
-      // Mettre à jour le champ de l'entité
-      $entity->set($field_name, $updated_values);
-      \Drupal::logger('media_attributes_manager')->debug('Updated entity field @field: removed @count media items', [
-        '@field' => $field_name,
-        '@count' => count($current_values) - count($updated_values)
-      ]);
-    }
-
-    // Mise à jour des valeurs dans l'entrée utilisateur pour les rendre persistantes
-    // Format 1: Chaîne dans target_id avec des IDs séparés par des espaces
-    if (isset($user_input[$field_name]['target_id'])) {
-      $current_target_ids_string = $user_input[$field_name]['target_id'];
-      $current_target_ids = explode(' ', $current_target_ids_string);
-      $updated_target_ids = [];
-
-      foreach ($current_target_ids as $target_id) {
-        $media_id = preg_replace('/^media:/', '', $target_id);
-        if (!in_array($media_id, $selected_media_ids)) {
-          $updated_target_ids[] = $target_id;
-        }
-      }
-
-      // Mettre à jour la valeur target_id dans l'entrée utilisateur
-      $user_input[$field_name]['target_id'] = implode(' ', $updated_target_ids);
-      \Drupal::logger('media_attributes_manager')->debug('Updated user input target_id: @value', [
-        '@value' => $user_input[$field_name]['target_id']
-      ]);
-    }
-
-    // Format 2: Format avec current/target_id
-    if (isset($user_input[$field_name]['current']['target_id'])) {
-      $current_target_ids_string = $user_input[$field_name]['current']['target_id'];
-      $current_target_ids = explode(' ', $current_target_ids_string);
-      $updated_target_ids = [];
-
-      foreach ($current_target_ids as $target_id) {
-        $media_id = preg_replace('/^media:/', '', $target_id);
-        if (!in_array($media_id, $selected_media_ids)) {
-          $updated_target_ids[] = $target_id;
-        }
-      }
-
-      // Mettre à jour la valeur target_id dans l'entrée utilisateur
-      $user_input[$field_name]['current']['target_id'] = implode(' ', $updated_target_ids);
-      \Drupal::logger('media_attributes_manager')->debug('Updated current/target_id: @value', [
-        '@value' => $user_input[$field_name]['current']['target_id']
-      ]);
-    }
-
-    // Format 3: Valeurs indexées numériquement dans target_id
-    if (isset($user_input[$field_name]['target_id']) && is_array($user_input[$field_name]['target_id'])) {
-      foreach ($user_input[$field_name]['target_id'] as $delta => $tid) {
-        if (in_array($tid, $selected_media_ids)) {
-          unset($user_input[$field_name]['target_id'][$delta]);
-        }
-      }
-      // Réindexer le tableau
-      if (is_array($user_input[$field_name]['target_id'])) {
-        $user_input[$field_name]['target_id'] = array_values($user_input[$field_name]['target_id']);
+    foreach ($current_values as $delta => $value) {
+      if (isset($value['target_id']) && !in_array($value['target_id'], $selected_media_ids)) {
+        $updated_values[] = $value;
       }
     }
 
-    // Mettre à jour l'entrée utilisateur
-    $form_state->setUserInput($user_input);
+    // Utiliser le trait pour mettre à jour le widget
+    $storage_data = ['media_removed_bulk' => $selected_media_ids];
+    $success = static::updateFieldAndUserInput($form_state, $field_name, $updated_values, 'remove', $storage_data);
 
-    // Forcer le rebuild du formulaire pour AJAX
-    $form_state->setRebuild(TRUE);
-
-    // Message de confirmation
-    $count = count($selected_media_ids);
-    $message = \Drupal::translation()->formatPlural(
-      $count,
-      'One media item has been removed.',
-      '@count media items have been removed.'
-    );
-    \Drupal::messenger()->addStatus($message);
-
-    \Drupal::logger('media_attributes_manager')->debug('Updated target_id value: @value', [
-      '@value' => $user_input[$field_name]['target_id']
-    ]);
+    if ($success) {
+      static::showOperationMessage('remove', count($selected_media_ids));
+    } else {
+      \Drupal::messenger()->addError(new TranslatableMarkup('Failed to update field during bulk removal.'));
+    }
   }
+
+
 
   /**
    * Traite les actions de suppression d'éléments média.
@@ -1213,8 +1109,104 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Créer un ID unique pour le wrapper des boutons
-    $wrapper_id = $field_name ? "edit-" . str_replace('_', '-', $field_name) . '-wrapper' : '';
+    // Utiliser le même wrapper ID que les autres boutons AJAX du widget
+    // En cherchant dans la structure current/items pour trouver un bouton existant
+    $wrapper_id = '';
+    if (!empty($field_name) && isset($complete_form[$field_name]['widget']['current']['items'])) {
+      foreach (Element::children($complete_form[$field_name]['widget']['current']['items']) as $delta) {
+        $item = $complete_form[$field_name]['widget']['current']['items'][$delta];
+        if (isset($item['buttons']['remove_button']['#ajax']['wrapper'])) {
+          $wrapper_id = $item['buttons']['remove_button']['#ajax']['wrapper'];
+          break;
+        }
+      }
+    }
+
+    // Fallback si pas trouvé
+    if (empty($wrapper_id)) {
+      $wrapper_id = $field_name ? $field_name . '-widget-wrapper' : 'widget-wrapper';
+    }
+
+    \Drupal::logger('media_attributes_manager')->debug('Sort button wrapper_id for field @field: @wrapper', [
+      '@field' => $field_name,
+      '@wrapper' => $wrapper_id
+    ]);
+
+    // Vérifier s'il y a plus d'un média pour afficher les contrôles de tri
+    $has_multiple_items = FALSE;
+
+    // Essayer de trouver les entités depuis différentes sources
+    if (isset($element['#entity_ids']) && is_string($element['#entity_ids'])) {
+      $entity_ids = array_filter(explode(' ', $element['#entity_ids']));
+      $has_multiple_items = count($entity_ids) > 1;
+    }
+    // Essayer depuis current/target_id
+    elseif (isset($element['current']['target_id']['#value'])) {
+      $entity_ids = array_filter(explode(' ', $element['current']['target_id']['#value']));
+      $has_multiple_items = count($entity_ids) > 1;
+    }
+    // Essayer depuis les parents dans le formulaire complet
+    elseif (!empty($field_name) && isset($complete_form[$field_name]['widget']['current']['target_id']['#value'])) {
+      $entity_ids = array_filter(explode(' ', $complete_form[$field_name]['widget']['current']['target_id']['#value']));
+      $has_multiple_items = count($entity_ids) > 1;
+    }
+
+    // Configuration des contrôles de tri
+    $sort_controls = [];
+    if ($has_multiple_items) {
+      $sort_controls = [
+        'sort_by' => [
+          '#type' => 'select',
+          '#title' => new TranslatableMarkup('Sort by'),
+          '#options' => [
+            'exif_date' => new TranslatableMarkup('EXIF Date'),
+            'file_date' => new TranslatableMarkup('File Date'),
+            'name' => new TranslatableMarkup('File Name'),
+          ],
+          '#default_value' => 'exif_date',
+          '#attributes' => ['class' => ['media-sort-select']],
+        ],
+
+        'sort_order' => [
+          '#type' => 'select',
+          '#title' => new TranslatableMarkup('Order'),
+          '#options' => [
+            'asc' => new TranslatableMarkup('Ascending'),
+            'desc' => new TranslatableMarkup('Descending'),
+          ],
+          '#default_value' => 'asc',
+          '#attributes' => ['class' => ['media-sort-order']],
+        ],
+
+        'sort_button' => [
+          '#type' => 'submit',
+          '#value' => new TranslatableMarkup('Sort'),
+          '#name' => 'sort_button_' . ($field_name ? $field_name : 'button'),
+          '#button_type' => 'normal',
+          '#attributes' => [
+            'class' => ['media-sort-button', 'button', 'button--small'],
+            'data-field-name' => $field_name,
+            'data-action' => 'sort-media',
+          ],
+          '#submit' => [[static::class, 'sortSelectedMedia']],
+          '#executes_submit_callback' => TRUE,
+          '#limit_validation_errors' => [
+            ['sort_by'],
+            ['sort_order'],
+          ],
+          '#ajax' => [
+            'callback' => [static::class, 'updateWidgetCallback'],
+            'wrapper' => $wrapper_id,
+            'method' => 'replaceWith',
+            'effect' => 'fade',
+            'progress' => [
+              'type' => 'throbber',
+              'message' => new TranslatableMarkup('Sorting media...'),
+            ],
+          ],
+        ],
+      ];
+    }
 
     // Configuration commune pour le bouton "Bulk Remove"
     $bulk_remove_config = [
@@ -1259,10 +1251,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       // Check if field creation is in progress
       $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
       $field_creation_progress = $queue_manager->getFieldCreationProgress();
-      
+
       // Check if AJAX progress should be used (default: true for better UX)
       $use_ajax_progress = $config->get('use_ajax_progress_bar') !== FALSE;
-      
+
       $apply_exif_config = [
         '#type' => 'submit',
         '#value' => new TranslatableMarkup('Apply EXIF'),
@@ -1277,7 +1269,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         '#submit' => [[static::class, 'applyExifData']],
         '#limit_validation_errors' => [],
       ];
-      
+
       // Configure AJAX behavior based on setting
       if ($use_ajax_progress) {
         // Use JavaScript-based progress bar (no server-side AJAX callback)
@@ -1294,21 +1286,21 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           ],
         ];
       }
-      
+
       // Disable button if field creation is in progress
       if ($field_creation_progress['in_progress']) {
         $apply_exif_config['#disabled'] = TRUE;
         $apply_exif_config['#attributes']['class'][] = 'button--disabled';
-        
+
         if (!empty($field_creation_progress['has_stuck_items'])) {
           // Show different message for stuck items
-          $apply_exif_config['#suffix'] = '<div class="field-creation-notice field-creation-stuck"><em>' . 
+          $apply_exif_config['#suffix'] = '<div class="field-creation-notice field-creation-stuck"><em>' .
             new TranslatableMarkup('EXIF field creation queue has stuck items (@count total). <a href="#" onclick="cleanStuckItems(); return false;">Click here to clean stuck items</a> and try again.', [
               '@count' => $field_creation_progress['items_in_queue'],
             ]) . '</em></div>';
         } else {
           // Normal in-progress message
-          $apply_exif_config['#suffix'] = '<div class="field-creation-notice"><em>' . 
+          $apply_exif_config['#suffix'] = '<div class="field-creation-notice"><em>' .
             new TranslatableMarkup('EXIF field creation is in progress (@count tasks remaining). Please wait for completion before applying EXIF data.', [
               '@count' => $field_creation_progress['items_in_queue'],
             ]) . '</em></div>';
@@ -1324,7 +1316,16 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_edit' => $bulk_edit_config,
         'bulk_remove' => $bulk_remove_config,
       ];
-      
+
+      // Ajouter les contrôles de tri si il y a plusieurs médias
+      if (!empty($sort_controls)) {
+        $element['actions']['bulk_buttons_wrapper']['sort_controls'] = [
+          '#type' => 'container',
+          '#attributes' => ['class' => ['media-sort-controls']],
+          '#weight' => -10,
+        ] + $sort_controls;
+      }
+
       // Ajouter le bouton EXIF si activé dans la configuration
       if (!empty($apply_exif_config)) {
         $element['actions']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
@@ -1338,7 +1339,16 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_edit' => $bulk_edit_config,
         'bulk_remove' => $bulk_remove_config,
       ];
-      
+
+      // Ajouter les contrôles de tri si il y a plusieurs médias
+      if (!empty($sort_controls)) {
+        $element['entity_browser']['bulk_buttons_wrapper']['sort_controls'] = [
+          '#type' => 'container',
+          '#attributes' => ['class' => ['media-sort-controls']],
+          '#weight' => -10,
+        ] + $sort_controls;
+      }
+
       // Ajouter le bouton EXIF si activé dans la configuration
       if (!empty($apply_exif_config)) {
         $element['entity_browser']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
@@ -1355,9 +1365,126 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // Récupère l'élément déclencheur
     $triggering_element = $form_state->getTriggeringElement();
 
+    // Vérifier s'il s'agit d'une opération de tri
+    $storage = $form_state->getStorage();
+    $is_sort_operation = isset($storage['media_sorted']) && $storage['media_sorted'];
+    if ($is_sort_operation) {
+      \Drupal::logger('media_attributes_manager')->debug('Detected sort operation in updateWidgetCallback');
+
+      // Pour les opérations de tri, nous devons forcer la reconstruction complète du widget
+      $field_name = isset($storage['field_name']) ? $storage['field_name'] : '';
+      if ($field_name && isset($form[$field_name])) {
+
+        // CORRECTION: Forcer la reconstruction du widget avec les nouvelles valeurs
+        $form_object = $form_state->getFormObject();
+        if ($form_object && method_exists($form_object, 'getEntity')) {
+          $entity = $form_object->getEntity();
+          if ($entity && $entity->hasField($field_name)) {
+
+            // Récupérer les nouvelles valeurs depuis l'entité (qui ont été mises à jour dans sortSelectedMedia)
+            $field_items = $entity->get($field_name);
+            $current_values = $field_items->getValue();
+
+            // Construire la nouvelle chaîne target_id avec l'ordre trié
+            $sorted_entity_ids = [];
+            foreach ($current_values as $value) {
+              if (isset($value['target_id'])) {
+                $sorted_entity_ids[] = 'media:' . $value['target_id'];
+              }
+            }
+            $new_target_id = implode(' ', $sorted_entity_ids);
+
+            \Drupal::logger('media_attributes_manager')->debug('Sort operation: updating widget with new order: @ids', [
+              '@ids' => $new_target_id
+            ]);
+
+            // Mettre à jour le target_id dans tous les endroits possibles du widget
+            if (isset($form[$field_name]['widget']['current']['target_id'])) {
+              $form[$field_name]['widget']['current']['target_id']['#value'] = $new_target_id;
+            }
+            if (isset($form[$field_name]['widget']['target_id'])) {
+              $form[$field_name]['widget']['target_id']['#value'] = $new_target_id;
+            }
+
+            // NOUVELLE APPROCHE: Réorganiser les items existants au lieu de les reconstruire
+            if (isset($form[$field_name]['widget']['current']['items'])) {
+              $existing_items = &$form[$field_name]['widget']['current']['items'];
+
+              // Charger les entités médias dans l'ordre trié
+              $media_storage = \Drupal::entityTypeManager()->getStorage('media');
+              $ordered_entities = [];
+              foreach ($current_values as $value) {
+                if (isset($value['target_id'])) {
+                  $media = $media_storage->load($value['target_id']);
+                  if ($media) {
+                    $ordered_entities[] = $media;
+                  }
+                }
+              }
+
+              if (!empty($ordered_entities)) {
+                // Créer un mapping des items existants par media ID
+                $items_by_media_id = [];
+                foreach ($existing_items as $delta => $item) {
+                  if (isset($item['#attributes']['data-entity-id'])) {
+                    $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
+                    $items_by_media_id[$media_id] = $item;
+                  }
+                }
+
+                // Réorganiser les items selon le nouvel ordre
+                $reordered_items = [];
+                foreach ($ordered_entities as $new_delta => $media) {
+                  $media_id = $media->id();
+                  if (isset($items_by_media_id[$media_id])) {
+                    // Récupérer l'item existant et mettre à jour ses attributs
+                    $item = $items_by_media_id[$media_id];
+
+                    // Mettre à jour les attributs nécessaires
+                    $item['#attributes']['data-row-id'] = $new_delta;
+                    $item['#weight'] = $new_delta;
+
+                    // Mettre à jour les noms des boutons pour éviter les conflits
+                    if (isset($item['buttons']['remove_button']['#name'])) {
+                      $item['buttons']['remove_button']['#name'] = $field_name . '_' . $new_delta . '_remove_button';
+                    }
+                    if (isset($item['buttons']['select_checkbox']['#attributes']['data-row-id'])) {
+                      $item['buttons']['select_checkbox']['#attributes']['data-row-id'] = $new_delta;
+                    }
+
+                    $reordered_items[$new_delta] = $item;
+                  }
+                }
+
+                // Remplacer les items par ceux réorganisés
+                $form[$field_name]['widget']['current']['items'] = $reordered_items;
+
+                // Mettre à jour le target_id avec le nouvel ordre
+                $form[$field_name]['widget']['current']['target_id']['#value'] = $new_target_id;
+
+                \Drupal::logger('media_attributes_manager')->debug('Reordered @count items in sorted order', [
+                  '@count' => count($reordered_items)
+                ]);
+              }
+            }
+          }
+        }
+
+        // Nettoyer le storage de l'opération de tri
+        unset($storage['media_sorted']);
+        $form_state->setStorage($storage);
+
+        \Drupal::logger('media_attributes_manager')->debug('Returning sorted widget for field: @field', [
+          '@field' => $field_name
+        ]);
+
+        // Retourner le widget complet pour forcer la mise à jour
+        return $form[$field_name]['widget'];
+      }
+    }
+
     // Vérifier s'il s'agit d'une suppression en masse
     $bulk_removed_media_ids = [];
-    $storage = $form_state->getStorage();
     if (isset($storage['media_removed_bulk']) && is_array($storage['media_removed_bulk'])) {
       $bulk_removed_media_ids = $storage['media_removed_bulk'];
       \Drupal::logger('media_attributes_manager')->debug('Found bulk removed media IDs: @ids', [
@@ -1612,47 +1739,24 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       $filter_removed_media($element);
     }
 
-    \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback');
+    \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback - returning element: @type', [
+      '@type' => isset($element['#type']) ? $element['#type'] : 'unknown'
+    ]);
     return $element;
   }
-  
+
   /**
-   * Submit handler pour Apply EXIF data button.
+   * Applique les données EXIF aux médias sélectionnés.
    */
   public static function applyExifData(array &$form, FormStateInterface $form_state) {
     $triggering_element = $form_state->getTriggeringElement();
     $user_input = $form_state->getUserInput();
     $selected_media_ids = [];
-    $field_name = '';
 
     \Drupal::logger('media_attributes_manager')->debug('Apply EXIF data triggered');
 
-    // Récupérer le nom du champ depuis le bouton déclencheur
-    if (!empty($triggering_element['#attributes']['data-field-name'])) {
-      $field_name = $triggering_element['#attributes']['data-field-name'];
-    }
-    // Si pas trouvé, essayer de l'identifier à partir des parents du bouton
-    else {
-      // Analyser les parents du bouton pour trouver le nom du champ
-      if (!empty($triggering_element['#array_parents'])) {
-        foreach ($triggering_element['#array_parents'] as $parent) {
-          if (strpos($parent, 'field_') === 0) {
-            $field_name = $parent;
-            break;
-          }
-        }
-      }
-    }
-
-    // Si on n'a toujours pas trouvé le nom du champ, essayer de le déduire du nom du bouton
-    if (empty($field_name) && !empty($triggering_element['#name'])) {
-      $button_name = $triggering_element['#name'];
-      if (strpos($button_name, 'apply_exif_field_') === 0) {
-        $field_name = substr($button_name, strlen('apply_exif_'));
-      }
-    }
-
-    // Si on n'a pas pu identifier le champ, sortir avec un message d'erreur
+    // Utiliser le trait pour identifier le champ
+    $field_name = static::getFieldNameFromTrigger($triggering_element);
     if (empty($field_name)) {
       \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for EXIF data application."));
       return;
@@ -1662,7 +1766,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     if (isset($form[$field_name]['widget']['current']['items'])) {
       foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
         $item = $form[$field_name]['widget']['current']['items'][$delta];
-        
+
         // Vérifier si la checkbox est cochée
         $checked = FALSE;
         if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
@@ -1698,7 +1802,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     if ($config->get('auto_create_fields')) {
       $field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
       $fields_created = $field_manager->createExifFieldsOnDemand();
-      
+
       if ($fields_created > 0) {
         $field_message = \Drupal::translation()->formatPlural(
           $fields_created,
@@ -1721,7 +1825,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'EXIF data has been applied and @count media items have been fully updated.'
       );
       \Drupal::messenger()->addStatus($message);
-      
+
       // Log the successful operation
       \Drupal::logger('media_attributes_manager')->info('Applied EXIF data to @count media item(s) with full entity updates', [
         '@count' => $updated_count
@@ -1785,7 +1889,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     foreach ($media_ids as $media_id) {
       try {
         $media = $entity_type_manager->getStorage('media')->load($media_id);
-        
+
         if ($media && in_array($media->bundle(), $allowed_bundles)) {
           // Media type is allowed, keep it
           $allowed_media_ids[] = $media_id;
@@ -1796,7 +1900,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         } else {
           // Media type is not allowed, filter it out
           $filtered_count++;
-          
+
           // Log the filtered media for debugging
           \Drupal::logger('media_attributes_manager')->info('Filtered out media ID @id with type @type (not in allowed types: @allowed)', [
             '@id' => $media_id,
@@ -1822,7 +1926,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         '@count media items were filtered out because their types are not allowed in this field.'
       );
       \Drupal::messenger()->addWarning($message);
-      
+
       // Also show which types are allowed
       $media_type_storage = $entity_type_manager->getStorage('media_type');
       $allowed_type_labels = [];
@@ -1832,7 +1936,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           $allowed_type_labels[] = $media_type->label();
         }
       }
-      
+
       if (!empty($allowed_type_labels)) {
         \Drupal::messenger()->addMessage($this->t('This field only accepts the following media types: @types', [
           '@types' => implode(', ', $allowed_type_labels),
@@ -1843,7 +1947,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // Reconstruct the target_id string in the format expected by the parent widget
     $filtered_target_id = '';
     if (!empty($allowed_media_ids)) {
-      $formatted_ids = array_map(function($id) {
+      $formatted_ids = array_map(function ($id) {
         return "media:$id";
       }, $allowed_media_ids);
       $filtered_target_id = implode(' ', $formatted_ids);
@@ -1858,12 +1962,344 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     ]);
 
     $result = parent::massageFormValues($filtered_values, $form, $form_state);
-    
+
     \Drupal::logger('media_attributes_manager')->debug('After parent::massageFormValues - result: @result (count: @count)', [
       '@result' => json_encode($result, JSON_PRETTY_PRINT),
       '@count' => count($result)
     ]);
 
     return $result;
+  }
+
+  /**
+   * Submit handler pour trier les médias sélectionnés.
+   */
+  public static function sortSelectedMedia(array &$form, FormStateInterface $form_state) {
+    \Drupal::logger('media_attributes_manager')->notice('=== SORT MEDIA CALLBACK TRIGGERED ===');
+
+    $triggering_element = $form_state->getTriggeringElement();
+    $user_input = $form_state->getUserInput();
+
+    // Utiliser le trait pour identifier le champ
+    $field_name = static::getFieldNameFromTrigger($triggering_element);
+    if (empty($field_name)) {
+      \Drupal::logger('media_attributes_manager')->error('Cannot identify field name for sorting');
+      \Drupal::messenger()->addError('Cannot identify field name for sorting');
+      return;
+    }
+
+    \Drupal::logger('media_attributes_manager')->notice('Field name identified: @field', ['@field' => $field_name]);
+
+    // Récupérer les paramètres de tri
+    // 1. Récupérer le chemin du conteneur parent (sort_controls)
+    $container_parents = array_slice($triggering_element['#parents'], 0, -1); // Retire "sort_button"
+
+    $sort_by = NestedArray::getValue($user_input, [...$container_parents, 'sort_by']) ?? 'exif_date';
+    $sort_order = NestedArray::getValue($user_input, [...$container_parents, 'sort_order']) ?? 'asc';
+    // 2. Récupérer les valeurs des selects
+    \Drupal::logger('media_attributes_manager')->notice('Sorting media by @sort_by in @order order', [
+      '@sort_by' => $sort_by,
+      '@order' => $sort_order
+    ]);
+
+    // Identifier les médias sélectionnés - même logique que bulkRemoveSelected
+    $selected_media_ids = [];
+    if (isset($form[$field_name]['widget']['current']['items'])) {
+      foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
+        $item = $form[$field_name]['widget']['current']['items'][$delta];
+
+        // Vérifier si la checkbox est cochée
+        $checked = FALSE;
+        if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
+          $checked = TRUE;
+        } elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
+          $checked = TRUE;
+        }
+
+        if ($checked && !empty($item['#attributes']['data-entity-id'])) {
+          $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
+          $selected_media_ids[] = $media_id;
+        }
+      }
+    }
+
+    $sort_selected_only = !empty($selected_media_ids);
+
+    if ($sort_selected_only) {
+      \Drupal::logger('media_attributes_manager')->notice('Sorting only selected media: @ids', [
+        '@ids' => implode(', ', $selected_media_ids)
+      ]);
+    } else {
+      \Drupal::logger('media_attributes_manager')->notice('No media selected, sorting all media');
+    }
+
+    // Récupérer l'entité et mettre à jour directement - même pattern que bulkRemoveSelected
+    $form_object = $form_state->getFormObject();
+    $entity = NULL;
+    if ($form_object && method_exists($form_object, 'getEntity')) {
+      $entity = $form_object->getEntity();
+    }
+
+    if (!$entity || !$entity->hasField($field_name)) {
+      \Drupal::logger('media_attributes_manager')->error('Cannot access entity or field for sorting');
+      return;
+    }
+
+    // Obtenir les valeurs actuelles du champ
+    $field_items = $entity->get($field_name);
+    $current_values = $field_items->getValue();
+
+    if (empty($current_values)) {
+      \Drupal::logger('media_attributes_manager')->warning('No media items found to sort');
+      return;
+    }
+
+    // Charger les entités média pour le tri
+    $media_items = [];
+    $non_sorted_items = [];
+
+    foreach ($current_values as $delta => $value) {
+      if (isset($value['target_id'])) {
+        $media = \Drupal::entityTypeManager()->getStorage('media')->load($value['target_id']);
+        if ($media) {
+          if ($sort_selected_only && !in_array($value['target_id'], $selected_media_ids)) {
+            // Garder cet item à sa position actuelle
+            $non_sorted_items[$delta] = $value;
+          } else {
+            // Ajouter à la liste des items à trier
+            $sort_value = static::getSortValue($media, $sort_by);
+            $media_items[$delta] = [
+              'value' => $value,
+              'media' => $media,
+              'sort_value' => $sort_value,
+              'delta' => $delta,
+            ];
+
+            \Drupal::logger('media_attributes_manager')->debug('Media @id (@name - @type - /media/@media_id) sort value (@sort_by): @value', [
+              '@id' => $value['target_id'],
+              '@media_id' => $value['target_id'],
+              '@name' => $media->label(),
+              '@type' => $media->bundle(),
+              '@sort_by' => $sort_by,
+              '@value' => is_string($sort_value) ? $sort_value : ($sort_value ? date('Y-m-d H:i:s', $sort_value) : 'NULL')
+            ]);
+          }
+        }
+      }
+    }
+
+    if (empty($media_items)) {
+      \Drupal::logger('media_attributes_manager')->warning('No media items found to sort');
+      return;
+    }
+
+    \Drupal::logger('media_attributes_manager')->notice('Sorting @count media items', ['@count' => count($media_items)]);
+
+    // Trier les médias sélectionnés
+    usort($media_items, function ($a, $b) use ($sort_order) {
+      $result = 0;
+
+      // Gérer les valeurs nulles
+      if ($a['sort_value'] === null && $b['sort_value'] === null) {
+        return 0;
+      }
+      if ($a['sort_value'] === null) {
+        return 1;
+      }
+      if ($b['sort_value'] === null) {
+        return -1;
+      }
+
+      // Comparer les valeurs
+      if (is_string($a['sort_value']) && is_string($b['sort_value'])) {
+        $result = strcasecmp($a['sort_value'], $b['sort_value']);
+      } else {
+        $result = $a['sort_value'] <=> $b['sort_value'];
+      }
+
+      return $sort_order === 'desc' ? -$result : $result;
+    });
+
+    // Reconstruire les valeurs du champ dans le bon ordre - même pattern que bulkRemoveSelected
+    $new_values = [];
+    $sorted_entity_ids = [];
+
+    if ($sort_selected_only) {
+      // Créer une carte complète de tous les items avec leur position d'origine
+      $all_items_map = [];
+
+      // Ajouter les items non triés avec leur delta d'origine
+      foreach ($non_sorted_items as $delta => $value) {
+        $all_items_map[$delta] = $value;
+      }
+
+      // Ajouter les items triés avec leur delta d'origine
+      foreach ($media_items as $item_data) {
+        $all_items_map[$item_data['delta']] = $item_data['value'];
+      }
+
+      // Trier par delta pour maintenir l'ordre, puis remplacer les éléments triés
+      ksort($all_items_map);
+
+      $sorted_index = 0;
+      foreach ($all_items_map as $delta => $value) {
+        if (isset($media_items[$delta])) {
+          // Remplacer par l'item trié correspondant
+          if ($sorted_index < count($media_items)) {
+            $new_values[] = $media_items[$sorted_index]['value'];
+            $sorted_entity_ids[] = 'media:' . $media_items[$sorted_index]['value']['target_id'];
+            $sorted_index++;
+          }
+        } else {
+          // Garder l'item non trié à sa position
+          $new_values[] = $value;
+          $sorted_entity_ids[] = 'media:' . $value['target_id'];
+        }
+      }
+    } else {
+      // Tout trier
+      foreach ($media_items as $media_item) {
+        $new_values[] = $media_item['value'];
+        $sorted_entity_ids[] = 'media:' . $media_item['value']['target_id'];
+      }
+    }
+
+    // Utiliser le trait pour mettre à jour le widget avec les nouvelles valeurs triées
+    $storage_data = ['media_sorted' => true];
+    $success = static::updateFieldAndUserInput($form_state, $field_name, $new_values, 'sort', $storage_data);
+
+    if ($success) {
+      static::showOperationMessage('sort', count($media_items));
+      \Drupal::logger('media_attributes_manager')->notice('Sort complete. New order: @order', [
+        '@order' => implode(' ', $sorted_entity_ids)
+      ]);
+    } else {
+      \Drupal::messenger()->addError('Failed to update field during sorting.');
+    }
+  }
+
+  /**
+   * Obtient la valeur de tri pour un média selon le critère spécifié.
+   */
+  protected static function getSortValue($media, $sort_by) {
+    \Drupal::logger('media_attributes_manager')->debug('Getting sort value for media @id (@name - @type - /media/@media_id) with sort_by: @sort_by', [
+      '@id' => $media->id(),
+      '@media_id' => $media->id(),
+      '@name' => $media->label(),
+      '@type' => $media->bundle(),
+      '@sort_by' => $sort_by
+    ]);
+
+    switch ($sort_by) {
+      case 'exif_date':
+        // Essayer d'abord le champ EXIF date
+        if ($media->hasField('field_exif_datetime')) {
+          $value = $media->get('field_exif_datetime')->value;
+          if (!empty($value)) {
+            \Drupal::logger('media_attributes_manager')->debug('Using EXIF datetime for media @id: @value', [
+              '@id' => $media->id(),
+              '@value' => $value
+            ]);
+            return strtotime($value);
+          }
+        }
+
+        // Fallback sur la date de création du fichier
+        $file_field = static::getMediaFileField($media);
+        if ($file_field && !$media->get($file_field)->isEmpty()) {
+          $file = $media->get($file_field)->entity;
+          if ($file) {
+            $file_time = $file->getCreatedTime();
+            \Drupal::logger('media_attributes_manager')->debug('Using file created time for media @id: @value', [
+              '@id' => $media->id(),
+              '@value' => date('Y-m-d H:i:s', $file_time)
+            ]);
+            return $file_time;
+          }
+        }
+
+        // Derniers fallback sur la date de création du média
+        $default_value = $media->getCreatedTime();
+        \Drupal::logger('media_attributes_manager')->debug('Using media created time for media @id: @value', [
+          '@id' => $media->id(),
+          '@value' => date('Y-m-d H:i:s', $default_value)
+        ]);
+        return $default_value;
+
+      case 'file_date':
+        $file_field = static::getMediaFileField($media);
+        if ($file_field && !$media->get($file_field)->isEmpty()) {
+          $file = $media->get($file_field)->entity;
+          if ($file) {
+            $file_time = $file->getCreatedTime();
+            \Drupal::logger('media_attributes_manager')->debug('Using file date for media @id: @value', [
+              '@id' => $media->id(),
+              '@value' => date('Y-m-d H:i:s', $file_time)
+            ]);
+            return $file_time;
+          }
+        }
+        $default_value = $media->getCreatedTime();
+        \Drupal::logger('media_attributes_manager')->debug('Using media created time for media @id: @value', [
+          '@id' => $media->id(),
+          '@value' => date('Y-m-d H:i:s', $default_value)
+        ]);
+        return $default_value;
+
+      case 'name':
+        $file_field = static::getMediaFileField($media);
+        if ($file_field && !$media->get($file_field)->isEmpty()) {
+          $file = $media->get($file_field)->entity;
+          if ($file) {
+            $filename = $file->getFilename();
+            \Drupal::logger('media_attributes_manager')->debug('Using filename for media @id: @filename', [
+              '@id' => $media->id(),
+              '@filename' => $filename
+            ]);
+            return strtolower($filename); // Normaliser pour un tri insensible à la casse
+          }
+        }
+        $label = $media->label();
+        \Drupal::logger('media_attributes_manager')->debug('Using media label for media @id: @label', [
+          '@id' => $media->id(),
+          '@label' => $label
+        ]);
+        return strtolower($label);
+
+      default:
+        $default_value = $media->getCreatedTime();
+        \Drupal::logger('media_attributes_manager')->debug('Using default created time for media @id: @value', [
+          '@id' => $media->id(),
+          '@value' => date('Y-m-d H:i:s', $default_value)
+        ]);
+        return $default_value;
+    }
+  }
+
+  /**
+   * Trouve le champ fichier principal d'un média.
+   */
+  protected static function getMediaFileField($media) {
+    // Essayer d'abord les champs les plus communs
+    $common_fields = ['field_media_file', 'field_media_image', 'field_media_video_file'];
+
+    foreach ($common_fields as $field_name) {
+      if ($media->hasField($field_name) && !$media->get($field_name)->isEmpty()) {
+        return $field_name;
+      }
+    }
+
+    // Fallback: chercher tout champ de type file ou image
+    foreach ($media->getFieldDefinitions() as $field_name => $definition) {
+      if (
+        in_array($definition->getType(), ['file', 'image']) &&
+        !$definition->getFieldStorageDefinition()->isBaseField() &&
+        !$media->get($field_name)->isEmpty()
+      ) {
+        return $field_name;
+      }
+    }
+
+    return null;
   }
 }

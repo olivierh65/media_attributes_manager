@@ -5,6 +5,13 @@
 {# Debug: pour voir toutes les variables disponibles #}
 {# {{ dump() }} #}
 
+{# Debug temporaire pour vérifier l'URL #}
+{% if datas.media_url is defined %}
+  <!-- DEBUG: URL du média disponible: {{ datas.media_url }} -->
+{% else %}
+  <!-- DEBUG: URL du média NON disponible -->
+{% endif %}
+
 {# Stockons d'abord tous les attributs personnalisés dans des variables structurées pour le tooltip #}
 {% set custom_attributes = {} %}
 {% set field_labels = {} %}
@@ -125,6 +132,9 @@
     <div class="media-item-info">
       <div class="media-item-name">{{ datas.media_title }}</div>
       <div class="media-item-type">{{ datas.media_type_label }}</div>
+      <div class="media-item-url">
+        <a href="{{ datas.media_url }}" target="_blank" title="Voir le média">{{ datas.media_url }}</a>
+      </div>
     </div>
 
     {# Affichage des actions (checkbox, boutons) #}
