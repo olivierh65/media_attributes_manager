@@ -76,3 +76,12 @@ media_attributes_manager.clear_stuck_removal_queue:
     _title: 'Clear Stuck Removal Queue'
   requirements:
     _permission: 'administer media'
+
+media_attributes_manager.rotate_image:
+  path: '/media-attributes/rotate-image'
+  defaults:
+    _controller: '\Drupal\media_attributes_manager\Controller\MediaRotationController::rotateImage'
+    _title: 'Rotate Media Image'
+  requirements:
+    _permission: 'administer media'
+  methods: [POST]

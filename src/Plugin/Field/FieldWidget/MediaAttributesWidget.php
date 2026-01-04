@@ -2,22 +2,17 @@
 
 namespace Drupal\media_attributes_manager\Plugin\Field\FieldWidget;
 
-use Drupal\Core\Field\FieldDefinition;
+use Drupal\media\Entity\Media;
 use Drupal\entity_browser\Plugin\Field\FieldWidget\EntityReferenceBrowserWidget;
-use Drupal\entity_browser\Plugin\Field\FieldWidget\FileBrowserWidget;
-use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Field\FieldWidget;
-use Drupal\Core\Field\WidgetBase;
 use Drupal\Core\Render\Element;
-use Drupal\image\Entity\ImageStyle;
-use Drupal\Core\File\FileUrlGenerator;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\media_attributes_manager\Traits\CustomFieldsTrait;
 use Drupal\media_attributes_manager\Traits\WidgetUpdateTrait;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
-use Drupal\media\MediaInterface;
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\ReplaceCommand;
 
 /**
  * Plugin implementation of 'media_attributes_widget' widget.
@@ -31,7 +26,6 @@ use Drupal\media\MediaInterface;
  *   multiple_values = TRUE
  * )
  */
-
 class MediaAttributesWidget extends EntityReferenceBrowserWidget {
   use CustomFieldsTrait;
   use WidgetUpdateTrait;
@@ -48,16 +42,19 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
   protected $field_definition;
 
+  /**
+   *
+   */
   public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
 
     // Appelle la méthode parent pour obtenir l'élément de formulaire de base.
     $element = parent::formElement($items, $delta, $element, $form, $form_state);
 
-    // Récupère le FieldDefinition
+    // Récupère le FieldDefinition.
     $this->field_definition = $items->getFieldDefinition();
     $field_name = $this->field_definition->getName();
 
-    // Parcourt les médias déjà sélectionnés
+    // Parcourt les médias déjà sélectionnés.
     foreach ($items as $item_key => $item) {
       if (!empty($item->target_id)) {
         $media = \Drupal::entityTypeManager()->getStorage('media')->load($item->target_id);
@@ -99,7 +96,8 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                     if ($ref_item->entity) {
                       if ($ref_item->entity->getEntityTypeId() === 'taxonomy_term') {
                         $referenced[] = $ref_item->entity->label();
-                      } else {
+                      }
+                      else {
                         $referenced[] = $ref_item->entity->id();
                       }
                     }
@@ -112,7 +110,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                   break;
               }
 
-              // Ajoute dans $element['current']['items'][$item_key]['#values'][$field_name]
+              // Ajoute dans $element['current']['items'][$item_key]['#values'][$field_name].
               $element['current']['items'][$item_key]['#values'][$field_name] = [
                 'label' => $definition->getLabel(),
                 'type' => $definition->getType(),
@@ -120,24 +118,25 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               ];
 
               // Ajoute également les valeurs comme attributs data pour le tooltip
-              // Adaptez la clé pour qu'elle soit utilisable comme attribut HTML
+              // Adaptez la clé pour qu'elle soit utilisable comme attribut HTML.
               $safe_field_name = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $field_name));
 
-              // Format et convertit la valeur pour un attribut HTML
+              // Format et convertit la valeur pour un attribut HTML.
               $attr_value = $value;
               if (is_array($value)) {
                 $attr_value = implode(', ', $value);
-              } elseif (is_bool($value)) {
+              }
+              elseif (is_bool($value)) {
                 $attr_value = $value ? 'true' : 'false';
               }
 
-              // Limite la longueur pour éviter des attributs trop grands
+              // Limite la longueur pour éviter des attributs trop grands.
               $attr_value = is_scalar($attr_value) ? substr((string) $attr_value, 0, 255) : '';
 
-              // Ajoute l'attribut data-*
+              // Ajoute l'attribut data-*.
               $element['current']['items'][$item_key]['#attributes']['data-media-attr-' . $safe_field_name] = (string) $attr_value;
 
-              // Ajoute également l'étiquette du champ
+              // Ajoute également l'étiquette du champ.
               $element['current']['items'][$item_key]['#attributes']['data-media-label-' . $safe_field_name] = (string) $definition->getLabel();
             }
           }
@@ -147,11 +146,14 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     return $element;
   }
 
+  /**
+   *
+   */
   public function form(FieldItemListInterface $items, array &$form, FormStateInterface $form_state, $get_delta = NULL) {
 
     $element = parent::form($items, $form, $form_state, $get_delta);
 
-    // Ajoute un champ caché pour la sélection côté JS
+    // Ajoute un champ caché pour la sélection côté JS.
     $element['media_selected'] = [
       '#type' => 'hidden',
       '#attributes' => [
@@ -166,10 +168,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // On ajoute un div avec l'ID 'drupal-modal' pour que le JS puisse l'utiliser.
     $element['#prefix'] = '<div id="drupal-modal" class="hidden"></div>' . ($element['#prefix'] ?? '');
 
-    // Ajoute notre librairie pour forcer l'initialisation du sortable
+    // Ajoute notre librairie pour forcer l'initialisation du sortable.
     $element['#attached']['library'][] = 'media_attributes_manager/sortable';
 
-    // Amélioration du support AJAX pour la suppression des médias
+    // Amélioration du support AJAX pour la suppression des médias.
     $element['#attached']['library'][] = 'core/drupal.ajax';
     $element['#attached']['library'][] = 'core/drupal.dialog.ajax';
 
@@ -181,15 +183,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     // Ajoute la librairie JS d'Entity Browser pour le drag & drop.
     $element['#attached']['library'][] = 'entity_browser/entity_browser.entity_reference';
 
-
-    // Ajoute nos styles personnalisés
+    // Ajoute nos styles personnalisés.
     $element['#attached']['library'][] = 'media_attributes_manager/widget';
 
-    //Ajoute JS de selection multiple (shift + click)
+    // Ajoute JS de selection multiple (shift + click)
     $element['#attached']['library'][] = 'media_attributes_manager/selection';
 
-    // Attach the bulk edit handler library for the "Bulk Edit" button
+    // Attach the bulk edit handler library for the "Bulk Edit" button.
     $element['#attached']['library'][] = 'media_attributes_manager/bulk_edit_handler';
+
+    // Ajoute la librairie pour la rotation d'images.
+    $element['#attached']['library'][] = 'media_attributes_manager/media_image_rotation';
 
     $form['#attached']['library'][] = 'media_attributes_manager/masonry_grid';
 
@@ -198,11 +202,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       if (!isset($element['widget']['entity_browser']['#process']) || !is_array($element['widget']['entity_browser']['#process'])) {
         $element['widget']['entity_browser']['#process'] = [];
       }
-      // Évite d'ajouter plusieurs fois le même callback
-      $already = false;
+      // Évite d'ajouter plusieurs fois le même callback.
+      $already = FALSE;
       foreach ($element['widget']['entity_browser']['#process'] as $callback) {
         if (is_array($callback) && $callback[0] === static::class && $callback[1] === 'processBulkButtons') {
-          $already = true;
+          $already = TRUE;
           break;
         }
       }
@@ -211,15 +215,15 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-
-
     return $element;
   }
 
+  /**
+   *
+   */
   private function setMediaDirectoriesModalConfig(FieldItemListInterface $items, array &$element) {
     // Configuration spécifique pour le modal Media Directories.
     // et recuperer les fonctionnalites de Media Directories UI.
-
     $element['#attached']['library'][] = 'core/drupal.dialog.ajax';
     $element['#attached']['library'][] = 'core/jquery.form';
 
@@ -246,6 +250,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         case 'claro':
           $element['widget']['#attached']['library'][] = 'claro/media_library.theme';
           break;
+
         case 'gin':
           $element['widget']['#attached']['library'][] = 'gin/media_library';
           $element['widget']['#attached']['library'][] = 'media_directories_ui/widget.gin';
@@ -264,10 +269,13 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     }
   }
 
+  /**
+   *
+   */
   protected function displayCurrentSelection($details_id, array $field_parents, array $entities) {
     $render_array = parent::displayCurrentSelection($details_id, $field_parents, $entities);
 
-    // Ajouter des identifiants uniques et cohérents pour cibler les widgets avec AJAX
+    // Ajouter des identifiants uniques et cohérents pour cibler les widgets avec AJAX.
     if (!isset($render_array['#attributes']['id'])) {
       $render_array['#attributes']['id'] = $details_id . '-selection-area';
     }
@@ -277,10 +285,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $render_array['#attributes']['class'][] = 'media-attributes-selection';
     $render_array['#attributes']['class'][] = 'ajax-rebuild-target';
 
-    // Pour chaque bouton de suppression, s'assurer qu'il utilise notre rappel AJAX
+    // Pour chaque bouton de suppression, s'assurer qu'il utilise notre rappel AJAX.
     foreach ($render_array['items'] as $key => &$item) {
       if (isset($item['remove_button'])) {
-        // Ajouter notre rappel AJAX pour actualiser correctement les widgets
+        // Ajouter notre rappel AJAX pour actualiser correctement les widgets.
         $item['remove_button']['#ajax'] = [
           'callback' => [static::class, 'updateWidgetCallback'],
           'wrapper' => $details_id,
@@ -291,7 +299,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           ],
         ];
 
-        // Ajouter des attributs supplémentaires pour faciliter le targeting AJAX
+        // Ajouter des attributs supplémentaires pour faciliter le targeting AJAX.
         $item['remove_button']['#attributes']['class'][] = 'use-ajax';
         $item['remove_button']['#attributes']['data-wrapper'] = $details_id;
       }
@@ -305,31 +313,29 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     }
     $ids_string = implode(' ', $entity_ids);
 
-    // Debug: Log structure pour comprendre comment les médias sont stockés
+    // Debug: Log structure pour comprendre comment les médias sont stockés.
     \Drupal::logger('media_attributes_manager')->debug('Structure des IDs dans displayCurrentSelection: @ids', [
-      '@ids' => $ids_string
+      '@ids' => $ids_string,
     ]);
 
-    // S'assurer que target_id est défini dans le render_array
+    // S'assurer que target_id est défini dans le render_array.
     $render_array['target_id'] = [
       '#type' => 'hidden',
       '#value' => $ids_string,
       '#attributes' => ['data-entity-ids' => $ids_string],
     ];
 
-
-
-    // Classes sur le conteneur principal
+    // Classes sur le conteneur principal.
     $render_array['#attributes']['class'] = [
       'entities-list',
       'entity-type--media',
       'sortable',
       'media-library-selection',
     ];
-    // vvvv Necessaire pour permettre le drag & drop vvvvv
+    // Vvvv Necessaire pour permettre le drag & drop vvvvv.
     $render_array['#attributes']['data-entity-browser-entity-reference-list'] = TRUE;
 
-    // recupere la taille de la vignette
+    // Recupere la taille de la vignette
     // On utilise l'image style 'medium' par défaut, mais on pourrait le rendre configurable
     // si besoin.
     $image_style = \Drupal::entityTypeManager()
@@ -350,17 +356,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // regroupe les boutons d'action et ajoute la checkbox de sélection
+    // Regroupe les boutons d'action et ajoute la checkbox de sélection.
     foreach ($render_array['items'] as $key => &$item) {
       $item['buttons']['edit_button'] = $item['edit_button'];
       $item['buttons']['remove_button'] = $item['remove_button'];
 
-      // Ensure we have a valid details_id for the wrapper
+      // Ensure we have a valid details_id for the wrapper.
       if (!$details_id && isset($render_array['#id'])) {
         $details_id = $render_array['#id'];
       }
 
-      // Configuration AJAX optimisée pour le bouton de suppression
+      // Configuration AJAX optimisée pour le bouton de suppression.
       $item['buttons']['remove_button']['#ajax'] = [
         'callback' => [static::class, 'updateWidgetCallback'],
         'wrapper' => $details_id,
@@ -370,10 +376,49 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'method' => 'replace',
       ];
 
-      // Store the wrapper ID and other necessary data for better identification
+      // Store the wrapper ID and other necessary data for better identification.
       $item['buttons']['remove_button']['#attributes']['data-wrapper-id'] = $details_id;
       $item['buttons']['remove_button']['#attributes']['data-target-id'] = $item['#attributes']['data-entity-id'] ?? '';
       $item['buttons']['replace_button'] = $item['replace_button'];
+
+      // Ajouter le bouton de rotation (seulement pour les images).
+      $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id'] ?? '');
+      $is_image_media = FALSE;
+
+      // Charger le media pour vérifier son type.
+      $media = \Drupal::entityTypeManager()->getStorage('media')->load($media_id);
+      if ($media) {
+        $media_type = \Drupal::entityTypeManager()->getStorage('media_type')->load($media->bundle());
+        if ($media_type && $media_type->getSource()->getPluginId() === 'image') {
+          $is_image_media = TRUE;
+        }
+      }
+
+      // Créer le bouton de rotation seulement pour les images.
+      if ($is_image_media) {
+        $item['buttons']['rotate_button'] = [
+          '#type' => 'submit',
+          '#value' => '↻',
+          '#name' => 'media_rotate_' . $media_id,
+          '#media_id' => $media_id,
+          '#attributes' => [
+            'class' => ['media-library-item__rotate', 'icon-link', 'media-rotate-btn'],
+            'title' => new TranslatableMarkup('Rotate image 90° counter-clockwise'),
+            'data-media-id' => $media_id,
+            'data-wrapper-id' => $details_id,
+          ],
+          '#ajax' => [
+            'callback' => [static::class, 'rotateImageCallback'],
+            'wrapper' => $details_id,
+            'effect' => 'fade',
+            'progress' => ['type' => 'throbber'],
+            'event' => 'click',
+            'method' => 'replace',
+          ],
+          '#weight' => 5,
+        ];
+      }
+
       $item['buttons']['select_checkbox'] = [
         '#type' => 'checkbox',
         '#title' => '',
@@ -420,6 +465,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         ]
       );
 
+      // Ajouter les classes CSS appropriées au bouton de rotation (si présent).
+      if (isset($item['buttons']['rotate_button'])) {
+        if (!isset($item['buttons']['rotate_button']['#attributes']['class'])) {
+          $item['buttons']['rotate_button']['#attributes']['class'] = [];
+        }
+        $item['buttons']['rotate_button']['#attributes']['class'] = array_merge(
+          $item['buttons']['rotate_button']['#attributes']['class'],
+          [
+            'media-library-item__rotate',
+            'icon-link',
+          ]
+        );
+      }
+
       unset($item['edit_button']);
       unset($item['remove_button']);
       unset($item['replace_button']);
@@ -429,38 +488,40 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       if (is_array($item) && isset($item['display']['#media'])) {
         $media = $item['display']['#media'];
 
-        // On s'assure que le media est bien chargé
-        if (!$media instanceof \Drupal\media\Entity\Media) {
+        // On s'assure que le media est bien chargé.
+        if (!$media instanceof Media) {
           continue;
         }
 
-        // Récupère le bundle et le type de source du média
+        // Récupère le bundle et le type de source du média.
         $bundle = $media->bundle();
         $bundle_config = \Drupal::service('entity_type.bundle.info')->getBundleInfo('media');
         $media_type = \Drupal::entityTypeManager()->getStorage('media_type')->load($bundle);
 
-        // Récupère les champs d'image ou de vidéo selon le type de média
+        // Récupère les champs d'image ou de vidéo selon le type de média.
         $image_field = $this->getImageFieldName($media, 'image');
         $video_field = $this->getImageFieldName($media, 'video');
 
         // Initialise les données à afficher
-        // Récupérer TOUS les champs personnalisés et leurs valeurs via le trait
+        // Récupérer TOUS les champs personnalisés et leurs valeurs via le trait.
         $custom_fields = $this->getCustomFields($media);
         $custom_values = $this->getCustomFieldValues($media);
 
-        // Préparer les données pour le template, en incluant tous les champs disponibles
+        // Préparer les données pour le template, en incluant tous les champs disponibles.
         $values_for_tooltip = [];
         foreach ($custom_fields as $field_name => $definition) {
           if (isset($custom_values[$field_name])) {
-            // Format spécifique pour le tooltip
+            // Format spécifique pour le tooltip.
             $value = $custom_values[$field_name];
-            // Gère les cas spéciaux pour l'affichage
+            // Gère les cas spéciaux pour l'affichage.
             if (is_array($value) && !empty($value)) {
-              // Pour les références d'entités (ex: taxonomie), on affiche les labels
+              // Pour les références d'entités (ex: taxonomie), on affiche les labels.
               $value = implode(', ', $value);
-            } else if ($value === NULL) {
+            }
+            elseif ($value === NULL) {
               $value = '';
-            } else if (is_bool($value)) {
+            }
+            elseif (is_bool($value)) {
               $value = $value ? 'Oui' : 'Non';
             }
 
@@ -473,7 +534,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           }
         }
 
-        // Fusionner avec toutes les autres valeurs déjà présentes
+        // Fusionner avec toutes les autres valeurs déjà présentes.
         if (isset($item['#values']) && is_array($item['#values'])) {
           foreach ($item['#values'] as $field_name => $field_data) {
             if (!isset($values_for_tooltip[$field_name])) {
@@ -482,10 +543,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           }
         }
 
-        // Log de débogage pour vérifier les valeurs disponibles
+        // Log de débogage pour vérifier les valeurs disponibles.
         \Drupal::logger('media_attributes_manager')->debug('Champs personnalisés pour le média @id: @fields', [
           '@id' => $media->id(),
-          '@fields' => print_r(array_keys($values_for_tooltip), TRUE)
+          '@fields' => print_r(array_keys($values_for_tooltip), TRUE),
         ]);
 
         $datas = [
@@ -502,11 +563,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           'media_thumbnail_height' => $height,
           'media_video_url' => '',
           'media_title' => $media->label(),
-          // Inclure toutes les valeurs des champs personnalisés pour le tooltip
+          // Inclure toutes les valeurs des champs personnalisés pour le tooltip.
           'values' => $values_for_tooltip,
         ];
 
-        // Si c'est une image, on récupère la vignette
+        // Si c'est une image, on récupère la vignette.
         if ($media_type && $media_type->getSource()->getPluginId() === 'image') {
           $image_field = $this->getImageFieldName($media, 'image');
           if ($image_field && !$media->get($image_field)->isEmpty()) {
@@ -527,19 +588,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $thumbnail_alt = $image_item->get('alt')->getString();
             $thumbnail_title = $image_item->get('title')->getString();
           }
-        } elseif ($media_type && $media_type->getSource()->getPluginId() === 'video_file') {
+        }
+        elseif ($media_type && $media_type->getSource()->getPluginId() === 'video_file') {
           // Récupère le nom du champ fichier vidéo (généralement field_media_video_file)
           $video_field = $this->getImageFieldName($media, 'file');
 
-          // Récupère l'URL du fichier vidéo
+          // Récupère l'URL du fichier vidéo.
           if ($media->hasField($video_field) && !$media->get($video_field)->isEmpty()) {
             $file = $media->get($video_field)->entity;
             if ($file) {
               $video_url = \Drupal::service('file_url_generator')->generateAbsoluteString($file->getFileUri());
             }
           }
-          // TODO: A tester
-          // Récupère la vignette si un champ image existe
+          // @todo A tester
+          // Récupère la vignette si un champ image existe.
           if ($media->hasField('field_media_image') && !$media->get('field_media_image')->isEmpty()) {
             $image = $media->get('field_media_image')->entity;
             $image_item = $media->get('field_media_image')->first();
@@ -558,7 +620,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           }
         }
 
-        // Complète $datas
+        // Complète $datas.
         $datas['media_video_url'] = $video_url ?? '';
         $datas['media_thumbnail_url'] = $thumbnail_url;
         $datas['media_thumbnail_alt'] = $thumbnail_alt;
@@ -567,7 +629,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $datas['media_thumbnail_height'] = $data['height'] ?? $height;
 
         // Remplace l'item par le render array thémé attendu par Drupal
-        // Récupère les classes existantes et ajoute celles nécessaires
+        // Récupère les classes existantes et ajoute celles nécessaires.
         $attributes = $item['#attributes'] ?? [];
         $attributes['class'] = array_unique(array_merge(
           $attributes['class'] ?? [],
@@ -583,19 +645,19 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $attributes['data-row-id'] = $key;
 
         $item['#attributes'] = $attributes;
-        // maintenant recuperes les données du media
+        // Maintenant recuperes les données du media.
         $item['display']['#datas'] = $datas;
       }
     }
 
     // Note: Bulk action buttons are handled by processBulkButtons() method
     // which is called via the process callback in formElement()
-
-
     return $render_array;
   }
 
-
+  /**
+   *
+   */
   private function getImageFieldName($media, $type) {
     foreach ($media->getFieldDefinitions() as $field_name => $definition) {
       if (
@@ -619,29 +681,29 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     \Drupal::logger('media_attributes_manager')->debug('Bulk remove triggered');
 
-    // Utiliser le trait pour identifier le champ
+    // Utiliser le trait pour identifier le champ.
     $field_name = static::getFieldNameFromTrigger($triggering_element);
     if (empty($field_name)) {
       \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for bulk removal."));
       return;
     }
 
-    // Rechercher toutes les cases à cocher sélectionnées dans la structure du formulaire
+    // Rechercher toutes les cases à cocher sélectionnées dans la structure du formulaire.
     if (isset($form[$field_name]['widget']['current']['items'])) {
       foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
         $item = $form[$field_name]['widget']['current']['items'][$delta];
 
-        // Vérifier si la checkbox est cochée
+        // Vérifier si la checkbox est cochée.
         $checked = FALSE;
         if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
           $checked = TRUE;
         }
-        // Vérifier dans les valeurs soumises par l'utilisateur
+        // Vérifier dans les valeurs soumises par l'utilisateur.
         elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
           $checked = TRUE;
         }
 
-        // Si la checkbox est cochée, extraire l'ID du média
+        // Si la checkbox est cochée, extraire l'ID du média.
         if ($checked && !empty($item['#attributes']['data-entity-id'])) {
           $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
           if (!empty($media_id)) {
@@ -651,32 +713,32 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Si aucun média sélectionné, essayer une approche alternative en recherchant dans l'input utilisateur
+    // Si aucun média sélectionné, essayer une approche alternative en recherchant dans l'input utilisateur.
     if (empty($selected_media_ids) && isset($user_input[$field_name])) {
       $field_input = $user_input[$field_name];
 
-      // Parcourir récursivement l'input pour trouver les checkboxes des médias
+      // Parcourir récursivement l'input pour trouver les checkboxes des médias.
       $findCheckboxes = function ($input, &$ids) use (&$findCheckboxes) {
         if (!is_array($input)) {
           return;
         }
 
         foreach ($input as $key => $value) {
-          // Vérifie les clés qui pourraient correspondre à des checkboxes de médias
+          // Vérifie les clés qui pourraient correspondre à des checkboxes de médias.
           if (is_string($key) && strpos($key, 'select_checkbox_') === 0 && $value == '1') {
             $media_id = substr($key, strlen('select_checkbox_'));
             if (is_numeric($media_id)) {
               $ids[] = $media_id;
             }
           }
-          // Vérifie les attributs data-entity-id et data-row-id pour les médias sélectionnés
+          // Vérifie les attributs data-entity-id et data-row-id pour les médias sélectionnés.
           elseif (is_string($key) && $key === 'data-entity-id' && strpos($value, 'media:') === 0) {
             $media_id = preg_replace('/^media:/', '', $value);
             if (is_numeric($media_id)) {
               $ids[] = $media_id;
             }
           }
-          // Recherche récursive dans les tableaux
+          // Recherche récursive dans les tableaux.
           elseif (is_array($value)) {
             $findCheckboxes($value, $ids);
           }
@@ -697,23 +759,23 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         if (is_numeric($media_id)) {
           $selected_media_ids[] = $media_id;
           \Drupal::logger('media_attributes_manager')->debug('Found media ID from target_id: @id', [
-            '@id' => $media_id
+            '@id' => $media_id,
           ]);
         }
       }
     }
 
-    // Si aucun média à supprimer, afficher un message et sortir
+    // Si aucun média à supprimer, afficher un message et sortir.
     if (empty($selected_media_ids)) {
       \Drupal::messenger()->addStatus(new TranslatableMarkup('No media items selected for removal.'));
       return;
     }
 
     \Drupal::logger('media_attributes_manager')->debug('Selected media IDs for bulk removal: @ids', [
-      '@ids' => implode(', ', $selected_media_ids)
+      '@ids' => implode(', ', $selected_media_ids),
     ]);
 
-    // Récupérer l'entité parent pour accéder au champ directement
+    // Récupérer l'entité parent pour accéder au champ directement.
     $form_object = $form_state->getFormObject();
     $entity = NULL;
     if (method_exists($form_object, 'getEntity')) {
@@ -736,18 +798,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Utiliser le trait pour mettre à jour le widget
+    // Utiliser le trait pour mettre à jour le widget.
     $storage_data = ['media_removed_bulk' => $selected_media_ids];
     $success = static::updateFieldAndUserInput($form_state, $field_name, $updated_values, 'remove', $storage_data);
 
     if ($success) {
       static::showOperationMessage('remove', count($selected_media_ids));
-    } else {
+    }
+    else {
       \Drupal::messenger()->addError(new TranslatableMarkup('Failed to update field during bulk removal.'));
     }
   }
-
-
 
   /**
    * Traite les actions de suppression d'éléments média.
@@ -759,14 +820,14 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     try {
       $triggering_element = $form_state->getTriggeringElement();
       if (!empty($triggering_element['#attributes']['data-entity-id'])) {
-        // Format expected: "media:123"
+        // Format expected: "media:123".
         $id = $triggering_element['#attributes']['data-entity-id'];
         $media_id = preg_replace('/^media:/', '', $id);
 
-        // Log relevant info without using print_r on large objects
+        // Log relevant info without using print_r on large objects.
         \Drupal::logger('media_attributes_manager')->debug('Removing media ID: @id', ['@id' => $media_id]);
 
-        // Trouver le nom du champ
+        // Trouver le nom du champ.
         $field_name = '';
         foreach ($triggering_element['#array_parents'] as $part) {
           if (strpos($part, 'field_') === 0) {
@@ -776,50 +837,52 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         }
         \Drupal::logger('media_attributes_manager')->debug('Field name found: @field', ['@field' => $field_name]);
 
-        // Debug: Log the user input structure to understand the format
+        // Debug: Log the user input structure to understand the format.
         $user_input = $form_state->getUserInput();
         if (isset($user_input[$field_name])) {
           $debug_input = $user_input[$field_name];
-          // Convert possibly large arrays to readable format without full dump
+          // Convert possibly large arrays to readable format without full dump.
           if (isset($debug_input['target_id'])) {
             \Drupal::logger('media_attributes_manager')->debug('User input format: target_id directly in field_name - Value: @value', [
-              '@value' => $debug_input['target_id']
+              '@value' => $debug_input['target_id'],
             ]);
           }
           if (isset($debug_input['current']['target_id'])) {
             \Drupal::logger('media_attributes_manager')->debug('User input format: target_id in current subarray - Value: @value', [
-              '@value' => $debug_input['current']['target_id']
+              '@value' => $debug_input['current']['target_id'],
             ]);
           }
 
-          // Log the structure of the array
+          // Log the structure of the array.
           $structure = [];
           foreach ($debug_input as $key => $value) {
             if (is_array($value)) {
               $structure[$key] = array_keys($value);
-            } else {
+            }
+            else {
               $structure[$key] = gettype($value);
             }
           }
           \Drupal::logger('media_attributes_manager')->debug('User input structure: @structure', [
-            '@structure' => json_encode($structure)
+            '@structure' => json_encode($structure),
           ]);
-        } else {
+        }
+        else {
           \Drupal::logger('media_attributes_manager')->debug('User input does not contain field_name key');
         }
 
-        // Récupérer l'entité
+        // Récupérer l'entité.
         if (!empty($field_name)) {
           $form_object = $form_state->getFormObject();
           if (method_exists($form_object, 'getEntity')) {
             $entity = $form_object->getEntity();
 
             if ($entity && $entity->hasField($field_name)) {
-              // Récupération des valeurs actuelles
+              // Récupération des valeurs actuelles.
               $current_values = $entity->get($field_name)->getValue();
               \Drupal::logger('media_attributes_manager')->debug('Current values: @values', ['@values' => json_encode($current_values)]);
 
-              // Filtrer pour supprimer le média
+              // Filtrer pour supprimer le média.
               $new_values = [];
               foreach ($current_values as $delta => $value) {
                 if (!isset($value['target_id']) || $value['target_id'] != $media_id) {
@@ -827,28 +890,28 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 }
               }
 
-              // Mise à jour du champ
+              // Mise à jour du champ.
               $entity->set($field_name, $new_values);
               \Drupal::logger('media_attributes_manager')->debug('Updated entity field. New values: @values', ['@values' => json_encode($new_values)]);
 
-              // Mise à jour de l'état du formulaire
+              // Mise à jour de l'état du formulaire.
               $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
               $field_state = NestedArray::getValue($form_state->getStorage(), $parents);
               if (!empty($field_state)) {
-                // Mettre à jour l'état du champ
+                // Mettre à jour l'état du champ.
                 NestedArray::setValue($form_state->getStorage(), $parents, $new_values);
               }
 
-              // Mise à jour des valeurs de formulaire pour les champs target_id
+              // Mise à jour des valeurs de formulaire pour les champs target_id.
               $values = $form_state->getValues();
               if (isset($values[$field_name])) {
-                // Log de la structure initiale
+                // Log de la structure initiale.
                 \Drupal::logger('media_attributes_manager')->debug('Form values structure for @field: @structure', [
                   '@field' => $field_name,
-                  '@structure' => json_encode(array_keys($values[$field_name]))
+                  '@structure' => json_encode(array_keys($values[$field_name])),
                 ]);
 
-                // Cas 1: Format 'target_id' avec chaîne de caractères
+                // Cas 1: Format 'target_id' avec chaîne de caractères.
                 if (isset($values[$field_name]['target_id']) && is_string($values[$field_name]['target_id'])) {
                   $target_ids = explode(' ', $values[$field_name]['target_id']);
                   $filtered_ids = [];
@@ -861,7 +924,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                   $values[$field_name]['target_id'] = implode(' ', $filtered_ids);
                 }
 
-                // Cas 2: Format avec valeurs indexées numériquement
+                // Cas 2: Format avec valeurs indexées numériquement.
                 if (isset($values[$field_name]['target_id']) && is_array($values[$field_name]['target_id'])) {
                   foreach ($values[$field_name]['target_id'] as $delta => $tid) {
                     if ($tid == $media_id) {
@@ -870,32 +933,32 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                   }
                 }
 
-                // Nettoyer les valeurs pour éliminer les espaces vides dans les arrays
+                // Nettoyer les valeurs pour éliminer les espaces vides dans les arrays.
                 if (isset($values[$field_name]['target_id']) && is_array($values[$field_name]['target_id'])) {
                   $values[$field_name]['target_id'] = array_values($values[$field_name]['target_id']);
                 }
 
-                // Mettre à jour les valeurs dans le form_state
+                // Mettre à jour les valeurs dans le form_state.
                 $form_state->setValues($values);
 
-                // Mettre à jour l'entité directement pour refléter les changements
+                // Mettre à jour l'entité directement pour refléter les changements.
                 $form_object = $form_state->getFormObject();
                 if (method_exists($form_object, 'getEntity')) {
                   $entity = $form_object->getEntity();
                   if ($entity && $entity->hasField($field_name)) {
                     $field_items = $entity->get($field_name);
 
-                    // Recréer le champ avec les valeurs mises à jour
+                    // Recréer le champ avec les valeurs mises à jour.
                     $field_items->setValue([]);
 
                     \Drupal::logger('media_attributes_manager')->debug('Resetting field @field values directly on entity', [
-                      '@field' => $field_name
+                      '@field' => $field_name,
                     ]);
 
-                    // Extraire les IDs des médias restants depuis les valeurs user input
+                    // Extraire les IDs des médias restants depuis les valeurs user input.
                     $remaining_ids = [];
 
-                    // Récupérer depuis target_id si présent
+                    // Récupérer depuis target_id si présent.
                     if (isset($user_input[$field_name]['target_id']) && !empty($user_input[$field_name]['target_id'])) {
                       $target_ids = explode(' ', $user_input[$field_name]['target_id']);
                       foreach ($target_ids as $target_id) {
@@ -906,24 +969,24 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                       }
                     }
 
-                    // Ajouter les médias restants
+                    // Ajouter les médias restants.
                     if (!empty($remaining_ids)) {
                       foreach ($remaining_ids as $id) {
                         $field_items->appendItem(['target_id' => $id]);
                       }
                       \Drupal::logger('media_attributes_manager')->debug('Appended @count items to field entity: @ids', [
                         '@count' => count($remaining_ids),
-                        '@ids' => implode(',', $remaining_ids)
+                        '@ids' => implode(',', $remaining_ids),
                       ]);
                     }
                   }
                 }
               }
 
-              // Mise à jour de l'entrée utilisateur
+              // Mise à jour de l'entrée utilisateur.
               $user_input = $form_state->getUserInput();
 
-              // Mise à jour de target_id dans le format de chaîne avec espaces
+              // Mise à jour de target_id dans le format de chaîne avec espaces.
               if (isset($user_input[$field_name]['target_id'])) {
                 $target_ids = explode(' ', $user_input[$field_name]['target_id']);
                 $filtered_ids = [];
@@ -935,11 +998,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 }
                 $user_input[$field_name]['target_id'] = implode(' ', $filtered_ids);
                 \Drupal::logger('media_attributes_manager')->debug('Updated target_id field: @value', [
-                  '@value' => $user_input[$field_name]['target_id']
+                  '@value' => $user_input[$field_name]['target_id'],
                 ]);
               }
 
-              // Mise à jour dans current/target_id si présent
+              // Mise à jour dans current/target_id si présent.
               if (isset($user_input[$field_name]['current']['target_id'])) {
                 $target_ids = explode(' ', $user_input[$field_name]['current']['target_id']);
                 $filtered_ids = [];
@@ -951,11 +1014,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 }
                 $user_input[$field_name]['current']['target_id'] = implode(' ', $filtered_ids);
                 \Drupal::logger('media_attributes_manager')->debug('Updated current/target_id field: @value', [
-                  '@value' => $user_input[$field_name]['current']['target_id']
+                  '@value' => $user_input[$field_name]['current']['target_id'],
                 ]);
               }
 
-              // Essayer également le format traditionnel avec index numérique
+              // Essayer également le format traditionnel avec index numérique.
               foreach ($user_input[$field_name] as $delta => $value) {
                 if (is_numeric($delta) && isset($value['target_id']) && $value['target_id'] == $media_id) {
                   unset($user_input[$field_name][$delta]);
@@ -963,20 +1026,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 }
               }
 
-              // Mettre à jour l'entrée utilisateur
+              // Mettre à jour l'entrée utilisateur.
               $form_state->setUserInput($user_input);
 
-              // Recherche de l'ID de wrapper le plus approprié
+              // Recherche de l'ID de wrapper le plus approprié.
               $wrapper_id = '';
 
-              // Le wrapper du champ pour la mise à jour AJAX peut être dans différents formats
+              // Le wrapper du champ pour la mise à jour AJAX peut être dans différents formats.
               if (isset($triggering_element['#ajax']['wrapper'])) {
                 $wrapper_id = $triggering_element['#ajax']['wrapper'];
               }
 
-              // Si on n'a pas de wrapper mais qu'on a le nom du champ
+              // Si on n'a pas de wrapper mais qu'on a le nom du champ.
               if (empty($wrapper_id) && !empty($field_name)) {
-                // Essayer différentes conventions de nommage pour le wrapper
+                // Essayer différentes conventions de nommage pour le wrapper.
                 $potential_wrappers = [
                   'edit-' . str_replace('_', '-', $field_name) . '-wrapper',
                   str_replace('_', '-', $field_name) . '--widget-wrapper',
@@ -985,7 +1048,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
                 foreach ($potential_wrappers as $potential_id) {
                   // On ne peut pas vérifier l'existence du wrapper ici,
-                  // mais on peut utiliser le premier format qui correspond aux conventions
+                  // mais on peut utiliser le premier format qui correspond aux conventions.
                   $wrapper_id = $potential_id;
                   break;
                 }
@@ -993,10 +1056,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
               if (!empty($wrapper_id)) {
                 \Drupal::logger('media_attributes_manager')->debug('Using wrapper ID for AJAX update: @wrapper', [
-                  '@wrapper' => $wrapper_id
+                  '@wrapper' => $wrapper_id,
                 ]);
 
-                // Stocker le wrapper dans le storage du formulaire pour être utilisé par updateWidgetCallback
+                // Stocker le wrapper dans le storage du formulaire pour être utilisé par updateWidgetCallback.
                 $storage = $form_state->getStorage();
                 $storage['ajax_update_wrapper'] = $wrapper_id;
                 $storage['media_removed'] = $media_id;
@@ -1004,7 +1067,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                 $form_state->setStorage($storage);
               }
 
-              // Assurez-vous que le déclencheur contient les bonnes propriétés pour l'AJAX
+              // Assurez-vous que le déclencheur contient les bonnes propriétés pour l'AJAX.
               if ($triggering_element) {
                 $ajax_settings = [
                   'callback' => [static::class, 'updateWidgetCallback'],
@@ -1015,36 +1078,37 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
                 if (empty($triggering_element['#ajax'])) {
                   $triggering_element['#ajax'] = $ajax_settings;
-                } else {
+                }
+                else {
                   foreach ($ajax_settings as $key => $value) {
                     $triggering_element['#ajax'][$key] = $value;
                   }
                 }
               }
 
-              // Forcer le rebuild complet du formulaire pour AJAX
+              // Forcer le rebuild complet du formulaire pour AJAX.
               $form_state->setRebuild(TRUE);
 
               // Essayer de réindexer les éléments restants dans les tableaux pour éviter
-              // des trous dans les indices qui peuvent causer des problèmes d'affichage
+              // des trous dans les indices qui peuvent causer des problèmes d'affichage.
               if (method_exists($form_state, 'cleanValues')) {
-                // Cette méthode est interne à Drupal mais peut aider à nettoyer les valeurs
+                // Cette méthode est interne à Drupal mais peut aider à nettoyer les valeurs.
                 $form_state->cleanValues();
               }
 
-              // Définir un message explicite mais plus discret
+              // Définir un message explicite mais plus discret.
               \Drupal::messenger()->addStatus(new TranslatableMarkup('Media item removed.'));
 
-              // Invalider les caches essentiels pour forcer le rafraîchissement du DOM
+              // Invalider les caches essentiels pour forcer le rafraîchissement du DOM.
               \Drupal::service('cache_tags.invalidator')->invalidateTags([
                 'media:' . $media_id,
                 'rendered',
-                'form:' . $form['#form_id']
+                'form:' . $form['#form_id'],
               ]);
 
-              // Log un message final pour confirmer que la suppression est terminée
+              // Log un message final pour confirmer que la suppression est terminée.
               \Drupal::logger('media_attributes_manager')->debug('Media removal complete. ID: @id', [
-                '@id' => $media_id
+                '@id' => $media_id,
               ]);
 
               return;
@@ -1053,10 +1117,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         }
 
         // Approche standard avec la classe parente
-        // mais indique au formulaire qu'il doit être reconstruit
+        // mais indique au formulaire qu'il doit être reconstruit.
         $form_state->setRebuild(TRUE);
       }
-    } catch (\Exception $e) {
+    }
+    catch (\Exception $e) {
       \Drupal::logger('media_attributes_manager')->error('Error in removeItemSubmit: @error', ['@error' => $e->getMessage()]);
       \Drupal::messenger()->addMessage(new TranslatableMarkup('An error occurred while removing the media. Please try saving the form.'));
       $form_state->setRebuild(TRUE);
@@ -1098,7 +1163,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $field_name = '';
     $field_parents = [];
 
-    // Identifier le nom du champ et les parents à partir de l'élément actuel
+    // Identifier le nom du champ et les parents à partir de l'élément actuel.
     if (isset($element['#array_parents']) && is_array($element['#array_parents'])) {
       foreach ($element['#array_parents'] as $parent) {
         if (strpos($parent, 'field_') === 0) {
@@ -1110,7 +1175,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     }
 
     // Utiliser le même wrapper ID que les autres boutons AJAX du widget
-    // En cherchant dans la structure current/items pour trouver un bouton existant
+    // En cherchant dans la structure current/items pour trouver un bouton existant.
     $wrapper_id = '';
     if (!empty($field_name) && isset($complete_form[$field_name]['widget']['current']['items'])) {
       foreach (Element::children($complete_form[$field_name]['widget']['current']['items']) as $delta) {
@@ -1122,36 +1187,36 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Fallback si pas trouvé
+    // Fallback si pas trouvé.
     if (empty($wrapper_id)) {
       $wrapper_id = $field_name ? $field_name . '-widget-wrapper' : 'widget-wrapper';
     }
 
     \Drupal::logger('media_attributes_manager')->debug('Sort button wrapper_id for field @field: @wrapper', [
       '@field' => $field_name,
-      '@wrapper' => $wrapper_id
+      '@wrapper' => $wrapper_id,
     ]);
 
-    // Vérifier s'il y a plus d'un média pour afficher les contrôles de tri
+    // Vérifier s'il y a plus d'un média pour afficher les contrôles de tri.
     $has_multiple_items = FALSE;
 
-    // Essayer de trouver les entités depuis différentes sources
+    // Essayer de trouver les entités depuis différentes sources.
     if (isset($element['#entity_ids']) && is_string($element['#entity_ids'])) {
       $entity_ids = array_filter(explode(' ', $element['#entity_ids']));
       $has_multiple_items = count($entity_ids) > 1;
     }
-    // Essayer depuis current/target_id
+    // Essayer depuis current/target_id.
     elseif (isset($element['current']['target_id']['#value'])) {
       $entity_ids = array_filter(explode(' ', $element['current']['target_id']['#value']));
       $has_multiple_items = count($entity_ids) > 1;
     }
-    // Essayer depuis les parents dans le formulaire complet
+    // Essayer depuis les parents dans le formulaire complet.
     elseif (!empty($field_name) && isset($complete_form[$field_name]['widget']['current']['target_id']['#value'])) {
       $entity_ids = array_filter(explode(' ', $complete_form[$field_name]['widget']['current']['target_id']['#value']));
       $has_multiple_items = count($entity_ids) > 1;
     }
 
-    // Configuration des contrôles de tri
+    // Configuration des contrôles de tri.
     $sort_controls = [];
     if ($has_multiple_items) {
       $sort_controls = [
@@ -1208,7 +1273,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       ];
     }
 
-    // Configuration commune pour le bouton "Bulk Remove"
+    // Configuration commune pour le bouton "Bulk Remove".
     $bulk_remove_config = [
       '#type' => 'submit',
       '#value' => new TranslatableMarkup('Bulk Remove'),
@@ -1232,9 +1297,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       ],
     ];
 
-    // Configuration commune pour le bouton "Bulk Edit"
+    // Configuration commune pour le bouton "Bulk Edit".
     $bulk_edit_config = [
-      '#type' => 'button', // Reste un bouton simple car géré par JS
+    // Reste un bouton simple car géré par JS.
+      '#type' => 'button',
       '#value' => new TranslatableMarkup('Bulk Edit'),
       '#attributes' => [
         'class' => ['bulk-edit-button'],
@@ -1244,11 +1310,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       ],
     ];
 
-    // Configuration pour le bouton "Apply EXIF"
+    // Configuration pour le bouton "Apply EXIF".
     $config = \Drupal::config('media_attributes_manager.settings');
     $apply_exif_config = [];
     if ($config->get('enable_exif_feature') !== FALSE) {
-      // Check if field creation is in progress
+      // Check if field creation is in progress.
       $queue_manager = \Drupal::service('media_attributes_manager.exif_field_creation_queue_manager');
       $field_creation_progress = $queue_manager->getFieldCreationProgress();
 
@@ -1270,13 +1336,14 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         '#limit_validation_errors' => [],
       ];
 
-      // Configure AJAX behavior based on setting
+      // Configure AJAX behavior based on setting.
       if ($use_ajax_progress) {
         // Use JavaScript-based progress bar (no server-side AJAX callback)
         $apply_exif_config['#attributes']['class'][] = 'use-ajax-progress';
         $apply_exif_config['#attached']['library'][] = 'media_attributes_manager/progress-bar';
-      } else {
-        // Use traditional AJAX callback
+      }
+      else {
+        // Use traditional AJAX callback.
         $apply_exif_config['#ajax'] = [
           'callback' => [static::class, 'updateWidgetCallback'],
           'wrapper' => $wrapper_id,
@@ -1287,19 +1354,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         ];
       }
 
-      // Disable button if field creation is in progress
+      // Disable button if field creation is in progress.
       if ($field_creation_progress['in_progress']) {
         $apply_exif_config['#disabled'] = TRUE;
         $apply_exif_config['#attributes']['class'][] = 'button--disabled';
 
         if (!empty($field_creation_progress['has_stuck_items'])) {
-          // Show different message for stuck items
+          // Show different message for stuck items.
           $apply_exif_config['#suffix'] = '<div class="field-creation-notice field-creation-stuck"><em>' .
             new TranslatableMarkup('EXIF field creation queue has stuck items (@count total). <a href="#" onclick="cleanStuckItems(); return false;">Click here to clean stuck items</a> and try again.', [
               '@count' => $field_creation_progress['items_in_queue'],
             ]) . '</em></div>';
-        } else {
-          // Normal in-progress message
+        }
+        else {
+          // Normal in-progress message.
           $apply_exif_config['#suffix'] = '<div class="field-creation-notice"><em>' .
             new TranslatableMarkup('EXIF field creation is in progress (@count tasks remaining). Please wait for completion before applying EXIF data.', [
               '@count' => $field_creation_progress['items_in_queue'],
@@ -1308,7 +1376,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Cas classique avec 'actions'
+    // Cas classique avec 'actions'.
     if (isset($element['actions'])) {
       $element['actions']['bulk_buttons_wrapper'] = [
         '#type' => 'container',
@@ -1317,7 +1385,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_remove' => $bulk_remove_config,
       ];
 
-      // Ajouter les contrôles de tri si il y a plusieurs médias
+      // Ajouter les contrôles de tri si il y a plusieurs médias.
       if (!empty($sort_controls)) {
         $element['actions']['bulk_buttons_wrapper']['sort_controls'] = [
           '#type' => 'container',
@@ -1326,12 +1394,12 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         ] + $sort_controls;
       }
 
-      // Ajouter le bouton EXIF si activé dans la configuration
+      // Ajouter le bouton EXIF si activé dans la configuration.
       if (!empty($apply_exif_config)) {
         $element['actions']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
       }
     }
-    // Cas où les boutons sont au même niveau que open_modal
+    // Cas où les boutons sont au même niveau que open_modal.
     elseif (isset($element['entity_browser']['open_modal'])) {
       $element['entity_browser']['bulk_buttons_wrapper'] = [
         '#type' => 'container',
@@ -1340,7 +1408,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         'bulk_remove' => $bulk_remove_config,
       ];
 
-      // Ajouter les contrôles de tri si il y a plusieurs médias
+      // Ajouter les contrôles de tri si il y a plusieurs médias.
       if (!empty($sort_controls)) {
         $element['entity_browser']['bulk_buttons_wrapper']['sort_controls'] = [
           '#type' => 'container',
@@ -1349,7 +1417,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         ] + $sort_controls;
       }
 
-      // Ajouter le bouton EXIF si activé dans la configuration
+      // Ajouter le bouton EXIF si activé dans la configuration.
       if (!empty($apply_exif_config)) {
         $element['entity_browser']['bulk_buttons_wrapper']['apply_exif'] = $apply_exif_config;
       }
@@ -1362,20 +1430,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
    * Méthode de rappel AJAX pour la mise à jour du widget.
    */
   public static function updateWidgetCallback(array &$form, FormStateInterface $form_state) {
-    // Récupère l'élément déclencheur
+    // Récupère l'élément déclencheur.
     $triggering_element = $form_state->getTriggeringElement();
 
-    // Vérifier s'il s'agit d'une opération de tri
+    // Vérifier s'il s'agit d'une opération de tri.
     $storage = $form_state->getStorage();
     $is_sort_operation = isset($storage['media_sorted']) && $storage['media_sorted'];
     if ($is_sort_operation) {
       \Drupal::logger('media_attributes_manager')->debug('Detected sort operation in updateWidgetCallback');
 
-      // Pour les opérations de tri, nous devons forcer la reconstruction complète du widget
-      $field_name = isset($storage['field_name']) ? $storage['field_name'] : '';
+      // Pour les opérations de tri, nous devons forcer la reconstruction complète du widget.
+      $field_name = $storage['field_name'] ?? '';
       if ($field_name && isset($form[$field_name])) {
 
-        // CORRECTION: Forcer la reconstruction du widget avec les nouvelles valeurs
+        // CORRECTION: Forcer la reconstruction du widget avec les nouvelles valeurs.
         $form_object = $form_state->getFormObject();
         if ($form_object && method_exists($form_object, 'getEntity')) {
           $entity = $form_object->getEntity();
@@ -1385,7 +1453,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $field_items = $entity->get($field_name);
             $current_values = $field_items->getValue();
 
-            // Construire la nouvelle chaîne target_id avec l'ordre trié
+            // Construire la nouvelle chaîne target_id avec l'ordre trié.
             $sorted_entity_ids = [];
             foreach ($current_values as $value) {
               if (isset($value['target_id'])) {
@@ -1395,10 +1463,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $new_target_id = implode(' ', $sorted_entity_ids);
 
             \Drupal::logger('media_attributes_manager')->debug('Sort operation: updating widget with new order: @ids', [
-              '@ids' => $new_target_id
+              '@ids' => $new_target_id,
             ]);
 
-            // Mettre à jour le target_id dans tous les endroits possibles du widget
+            // Mettre à jour le target_id dans tous les endroits possibles du widget.
             if (isset($form[$field_name]['widget']['current']['target_id'])) {
               $form[$field_name]['widget']['current']['target_id']['#value'] = $new_target_id;
             }
@@ -1406,11 +1474,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               $form[$field_name]['widget']['target_id']['#value'] = $new_target_id;
             }
 
-            // NOUVELLE APPROCHE: Réorganiser les items existants au lieu de les reconstruire
+            // NOUVELLE APPROCHE: Réorganiser les items existants au lieu de les reconstruire.
             if (isset($form[$field_name]['widget']['current']['items'])) {
               $existing_items = &$form[$field_name]['widget']['current']['items'];
 
-              // Charger les entités médias dans l'ordre trié
+              // Charger les entités médias dans l'ordre trié.
               $media_storage = \Drupal::entityTypeManager()->getStorage('media');
               $ordered_entities = [];
               foreach ($current_values as $value) {
@@ -1423,7 +1491,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               }
 
               if (!empty($ordered_entities)) {
-                // Créer un mapping des items existants par media ID
+                // Créer un mapping des items existants par media ID.
                 $items_by_media_id = [];
                 foreach ($existing_items as $delta => $item) {
                   if (isset($item['#attributes']['data-entity-id'])) {
@@ -1432,19 +1500,19 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                   }
                 }
 
-                // Réorganiser les items selon le nouvel ordre
+                // Réorganiser les items selon le nouvel ordre.
                 $reordered_items = [];
                 foreach ($ordered_entities as $new_delta => $media) {
                   $media_id = $media->id();
                   if (isset($items_by_media_id[$media_id])) {
-                    // Récupérer l'item existant et mettre à jour ses attributs
+                    // Récupérer l'item existant et mettre à jour ses attributs.
                     $item = $items_by_media_id[$media_id];
 
-                    // Mettre à jour les attributs nécessaires
+                    // Mettre à jour les attributs nécessaires.
                     $item['#attributes']['data-row-id'] = $new_delta;
                     $item['#weight'] = $new_delta;
 
-                    // Mettre à jour les noms des boutons pour éviter les conflits
+                    // Mettre à jour les noms des boutons pour éviter les conflits.
                     if (isset($item['buttons']['remove_button']['#name'])) {
                       $item['buttons']['remove_button']['#name'] = $field_name . '_' . $new_delta . '_remove_button';
                     }
@@ -1456,39 +1524,39 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
                   }
                 }
 
-                // Remplacer les items par ceux réorganisés
+                // Remplacer les items par ceux réorganisés.
                 $form[$field_name]['widget']['current']['items'] = $reordered_items;
 
-                // Mettre à jour le target_id avec le nouvel ordre
+                // Mettre à jour le target_id avec le nouvel ordre.
                 $form[$field_name]['widget']['current']['target_id']['#value'] = $new_target_id;
 
                 \Drupal::logger('media_attributes_manager')->debug('Reordered @count items in sorted order', [
-                  '@count' => count($reordered_items)
+                  '@count' => count($reordered_items),
                 ]);
               }
             }
           }
         }
 
-        // Nettoyer le storage de l'opération de tri
+        // Nettoyer le storage de l'opération de tri.
         unset($storage['media_sorted']);
         $form_state->setStorage($storage);
 
         \Drupal::logger('media_attributes_manager')->debug('Returning sorted widget for field: @field', [
-          '@field' => $field_name
+          '@field' => $field_name,
         ]);
 
-        // Retourner le widget complet pour forcer la mise à jour
+        // Retourner le widget complet pour forcer la mise à jour.
         return $form[$field_name]['widget'];
       }
     }
 
-    // Vérifier s'il s'agit d'une suppression en masse
+    // Vérifier s'il s'agit d'une suppression en masse.
     $bulk_removed_media_ids = [];
     if (isset($storage['media_removed_bulk']) && is_array($storage['media_removed_bulk'])) {
       $bulk_removed_media_ids = $storage['media_removed_bulk'];
       \Drupal::logger('media_attributes_manager')->debug('Found bulk removed media IDs: @ids', [
-        '@ids' => implode(', ', $bulk_removed_media_ids)
+        '@ids' => implode(', ', $bulk_removed_media_ids),
       ]);
     }
 
@@ -1497,20 +1565,20 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     if (isset($storage['media_removed'])) {
       $removed_media_id = $storage['media_removed'];
       \Drupal::logger('media_attributes_manager')->debug('Located removed media ID in storage: @id', [
-        '@id' => $removed_media_id
+        '@id' => $removed_media_id,
       ]);
     }
 
-    // Si on n'a pas trouvé l'ID dans le storage, essayer de l'extraire du triggering_element
+    // Si on n'a pas trouvé l'ID dans le storage, essayer de l'extraire du triggering_element.
     if (!$removed_media_id && !empty($triggering_element['#attributes']['data-entity-id'])) {
       $id = $triggering_element['#attributes']['data-entity-id'];
       $removed_media_id = preg_replace('/^media:/', '', $id);
       \Drupal::logger('media_attributes_manager')->debug('Extracted removed media ID from trigger: @id', [
-        '@id' => $removed_media_id
+        '@id' => $removed_media_id,
       ]);
     }
 
-    // Find the field name from the trigger's parents
+    // Find the field name from the trigger's parents.
     $field_name = '';
     if (isset($triggering_element['#array_parents'])) {
       foreach ($triggering_element['#array_parents'] as $parent) {
@@ -1521,31 +1589,32 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Si on n'a pas trouvé le field_name dans les parents, essayer de l'obtenir du storage
+    // Si on n'a pas trouvé le field_name dans les parents, essayer de l'obtenir du storage.
     if (empty($field_name) && isset($storage['field_name'])) {
       $field_name = $storage['field_name'];
       \Drupal::logger('media_attributes_manager')->debug('Using field name from storage: @name', [
-        '@name' => $field_name
+        '@name' => $field_name,
       ]);
     }
 
-    // Fonction pour filtrer récursivement un élément de formulaire pour supprimer un ou plusieurs médias
-    $filter_removed_media = NULL; // Initialize the variable before using it in the closure
+    // Fonction pour filtrer récursivement un élément de formulaire pour supprimer un ou plusieurs médias.
+    // Initialize the variable before using it in the closure.
+    $filter_removed_media = NULL;
     $filter_removed_media = function (&$element) use ($removed_media_id, $bulk_removed_media_ids, &$filter_removed_media) {
-      // Soit on a un ID simple, soit on a des IDs en masse
+      // Soit on a un ID simple, soit on a des IDs en masse.
       $has_removals = ($removed_media_id || !empty($bulk_removed_media_ids));
 
       if (!$has_removals || !is_array($element)) {
         return;
       }
 
-      // Si c'est un conteneur d'items de médias
+      // Si c'est un conteneur d'items de médias.
       if (isset($element['items']) && is_array($element['items'])) {
         $removed_count = 0;
         foreach ($element['items'] as $key => &$item) {
           $should_remove = FALSE;
 
-          // Vérification pour suppression simple
+          // Vérification pour suppression simple.
           if (
             $removed_media_id &&
             isset($item['#attributes']['data-entity-id']) &&
@@ -1554,7 +1623,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $should_remove = TRUE;
           }
 
-          // Vérification pour suppression en masse
+          // Vérification pour suppression en masse.
           if (
             !empty($bulk_removed_media_ids) &&
             isset($item['#attributes']['data-entity-id'])
@@ -1571,16 +1640,16 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           }
         }
 
-        // Réindexer le tableau après suppression
+        // Réindexer le tableau après suppression.
         if (is_array($element['items']) && $removed_count > 0) {
           $element['items'] = array_values($element['items']);
           \Drupal::logger('media_attributes_manager')->debug('Removed @count media items from items array', [
-            '@count' => $removed_count
+            '@count' => $removed_count,
           ]);
         }
       }
 
-      // Vérifier et mettre à jour les chaînes target_id pour retirer les médias supprimés
+      // Vérifier et mettre à jour les chaînes target_id pour retirer les médias supprimés.
       if (isset($element['target_id']) && isset($element['target_id']['#value'])) {
         $target_ids = explode(' ', $element['target_id']['#value']);
         $filtered_ids = [];
@@ -1588,12 +1657,12 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
           $media_id = preg_replace('/^media:/', '', $tid);
           $should_keep = TRUE;
 
-          // Vérification pour suppression simple
+          // Vérification pour suppression simple.
           if ($removed_media_id && $media_id === $removed_media_id) {
             $should_keep = FALSE;
           }
 
-          // Vérification pour suppression en masse
+          // Vérification pour suppression en masse.
           if (!empty($bulk_removed_media_ids) && in_array($media_id, $bulk_removed_media_ids)) {
             $should_keep = FALSE;
           }
@@ -1609,21 +1678,22 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         }
 
         \Drupal::logger('media_attributes_manager')->debug('Filtered target_id field: @ids', [
-          '@ids' => implode(' ', $filtered_ids)
+          '@ids' => implode(' ', $filtered_ids),
         ]);
       }
 
       // Instead of using Element::children() which requires proper render arrays,
-      // manually iterate through the element to find child elements
+      // manually iterate through the element to find child elements.
       foreach ($element as $key => $child) {
-        // Skip property keys (those starting with #) and non-array values
+        // Skip property keys (those starting with #) and non-array values.
         if ($key[0] !== '#') {
           if (is_array($child)) {
             $filter_removed_media($element[$key]);
-          } else {
+          }
+          else {
             // If it's not an array but also not a property (doesn't start with #),
             // it's likely an issue for Element::children(), so let's make it safe
-            // by ensuring it's handled as a property
+            // by ensuring it's handled as a property.
             $element['#' . $key] = $child;
             unset($element[$key]);
           }
@@ -1632,51 +1702,51 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     };
 
     if (!empty($field_name)) {
-      // Recherche des différents wrappers possibles du champ
+      // Recherche des différents wrappers possibles du champ.
       $possible_wrappers = [
-        // Format standard pour les wrappers de champ
+        // Format standard pour les wrappers de champ.
         $field_name . '_wrapper',
-        // Format details
+        // Format details.
         $field_name . '--wrapper',
-        // Format groupe de champs
+        // Format groupe de champs.
         'group-' . str_replace('_', '-', $field_name),
       ];
 
       foreach ($possible_wrappers as $wrapper_key) {
         if (isset($form[$wrapper_key])) {
           \Drupal::logger('media_attributes_manager')->debug('Found outer field wrapper: @wrapper', [
-            '@wrapper' => $wrapper_key
+            '@wrapper' => $wrapper_key,
           ]);
 
-          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu.
           $filter_removed_media($form[$wrapper_key]);
 
           return $form[$wrapper_key];
         }
       }
 
-      // Si on n'a pas trouvé de wrapper spécifique, essayer le conteneur de champ standard
+      // Si on n'a pas trouvé de wrapper spécifique, essayer le conteneur de champ standard.
       if (isset($form[$field_name])) {
         $field_container = $form[$field_name];
 
-        // Appliquer la fonction de filtrage pour supprimer le média du rendu
+        // Appliquer la fonction de filtrage pour supprimer le média du rendu.
         $filter_removed_media($field_container);
 
         \Drupal::logger('media_attributes_manager')->debug('Returning standard field container for AJAX: @field', [
-          '@field' => $field_name
+          '@field' => $field_name,
         ]);
 
         return $field_container;
       }
     }
 
-    // Recherche par ID directement dans le formulaire
+    // Recherche par ID directement dans le formulaire.
     if (!empty($field_name)) {
       $wrapper_id = 'edit-' . str_replace('_', '-', $field_name) . '-wrapper';
 
       foreach (Element::children($form) as $key) {
         if (isset($form[$key]['#id']) && $form[$key]['#id'] == $wrapper_id) {
-          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu.
           $filter_removed_media($form[$key]);
 
           \Drupal::logger('media_attributes_manager')->debug('Found wrapper by ID: @id', ['@id' => $wrapper_id]);
@@ -1685,62 +1755,65 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Original logic if we can't find the field container
+    // Original logic if we can't find the field container.
     $parents = [];
     if ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_remove_')) {
-      // L'utilisateur a cliqué sur un bouton de suppression
+      // L'utilisateur a cliqué sur un bouton de suppression.
       $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
 
       \Drupal::logger('media_attributes_manager')->debug('Remove button clicked. Parents: @parents', [
-        '@parents' => json_encode($parents)
+        '@parents' => json_encode($parents),
       ]);
 
       // Pour un bouton de suppression, essayez de remonter plus haut dans la hiérarchie
-      // pour obtenir le conteneur complet plutôt que juste le widget
+      // pour obtenir le conteneur complet plutôt que juste le widget.
       if (!empty($parents) && count($parents) >= 2) {
-        // Remontez d'un niveau supplémentaire
+        // Remontez d'un niveau supplémentaire.
         $container_parents = array_slice($parents, 0, -1);
         $container = NestedArray::getValue($form, $container_parents);
         if ($container) {
-          // Appliquer la fonction de filtrage pour supprimer le média du rendu
+          // Appliquer la fonction de filtrage pour supprimer le média du rendu.
           $filter_removed_media($container);
 
           \Drupal::logger('media_attributes_manager')->debug('Using parent container for removal');
           return $container;
         }
       }
-    } elseif (!empty($triggering_element['#ajax']['event']) && $triggering_element['#ajax']['event'] == 'entity_browser_value_updated') {
+    }
+    elseif (!empty($triggering_element['#ajax']['event']) && $triggering_element['#ajax']['event'] == 'entity_browser_value_updated') {
       $parents = array_slice($triggering_element['#array_parents'], 0, -1);
-    } elseif ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_replace_')) {
+    }
+    elseif ($triggering_element['#type'] == 'submit' && strpos($triggering_element['#name'], '_replace_')) {
       $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
-    } else {
-      // Cas générique, utiliser la méthode de détermination des parents précédente
+    }
+    else {
+      // Cas générique, utiliser la méthode de détermination des parents précédente.
       $parents = array_slice($triggering_element['#array_parents'], 0, -static::$deleteDepth);
     }
 
-    // Try to find the widget from parents
+    // Try to find the widget from parents.
     if (!empty($parents)) {
       $widget_element = NestedArray::getValue($form, $parents);
       if ($widget_element) {
-        // Appliquer la fonction de filtrage pour supprimer le média du rendu
+        // Appliquer la fonction de filtrage pour supprimer le média du rendu.
         $filter_removed_media($widget_element);
 
-        // Log for debugging
+        // Log for debugging.
         \Drupal::logger('media_attributes_manager')->debug('Widget found and updated via parents');
         return $widget_element;
       }
     }
 
-    // Fallback to parent method as a last resort
+    // Fallback to parent method as a last resort.
     $element = parent::updateWidgetCallback($form, $form_state);
 
-    // Appliquer la fonction de filtrage pour supprimer le média du rendu
+    // Appliquer la fonction de filtrage pour supprimer le média du rendu.
     if ($element) {
       $filter_removed_media($element);
     }
 
     \Drupal::logger('media_attributes_manager')->debug('Fallback to parent updateWidgetCallback - returning element: @type', [
-      '@type' => isset($element['#type']) ? $element['#type'] : 'unknown'
+      '@type' => $element['#type'] ?? 'unknown',
     ]);
     return $element;
   }
@@ -1755,7 +1828,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     \Drupal::logger('media_attributes_manager')->debug('Apply EXIF data triggered');
 
-    // Utiliser le trait pour identifier le champ
+    // Utiliser le trait pour identifier le champ.
     $field_name = static::getFieldNameFromTrigger($triggering_element);
     if (empty($field_name)) {
       \Drupal::messenger()->addError(new TranslatableMarkup("Couldn't identify the media field for EXIF data application."));
@@ -1767,17 +1840,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
         $item = $form[$field_name]['widget']['current']['items'][$delta];
 
-        // Vérifier si la checkbox est cochée
+        // Vérifier si la checkbox est cochée.
         $checked = FALSE;
         if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
           $checked = TRUE;
         }
-        // Vérifier dans les valeurs soumises par l'utilisateur
+        // Vérifier dans les valeurs soumises par l'utilisateur.
         elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
           $checked = TRUE;
         }
 
-        // Si la checkbox est cochée, extraire l'ID du média
+        // Si la checkbox est cochée, extraire l'ID du média.
         if ($checked && !empty($item['#attributes']['data-entity-id'])) {
           $media_id = preg_replace('/^media:/', '', $item['#attributes']['data-entity-id']);
           if (!empty($media_id)) {
@@ -1787,17 +1860,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Si aucun média sélectionné, afficher un message et sortir
+    // Si aucun média sélectionné, afficher un message et sortir.
     if (empty($selected_media_ids)) {
       \Drupal::messenger()->addStatus(new TranslatableMarkup('No media items selected for EXIF data application.'));
       return;
     }
 
     \Drupal::logger('media_attributes_manager')->debug('Selected media IDs for EXIF application: @ids', [
-      '@ids' => implode(', ', $selected_media_ids)
+      '@ids' => implode(', ', $selected_media_ids),
     ]);
 
-    // Vérifier si les champs doivent être créés automatiquement
+    // Vérifier si les champs doivent être créés automatiquement.
     $config = \Drupal::config('media_attributes_manager.settings');
     if ($config->get('auto_create_fields')) {
       $field_manager = \Drupal::service('media_attributes_manager.exif_field_manager');
@@ -1813,11 +1886,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Appeler le service ExifDataManager pour appliquer les données EXIF
+    // Appeler le service ExifDataManager pour appliquer les données EXIF.
     $exif_service = \Drupal::service('media_attributes_manager.exif_data_manager');
     $updated_count = $exif_service->applyExifData($selected_media_ids);
 
-    // Message de
+    // Message de.
     if ($updated_count > 0) {
       $message = \Drupal::translation()->formatPlural(
         $updated_count,
@@ -1826,11 +1899,12 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       );
       \Drupal::messenger()->addStatus($message);
 
-      // Log the successful operation
+      // Log the successful operation.
       \Drupal::logger('media_attributes_manager')->info('Applied EXIF data to @count media item(s) with full entity updates', [
-        '@count' => $updated_count
+        '@count' => $updated_count,
       ]);
-    } else {
+    }
+    else {
       \Drupal::messenger()->addWarning(new TranslatableMarkup('No media items were updated with EXIF data. Make sure you have selected media items with EXIF data and that the selected EXIF fields exist in your media types.'));
     }
 
@@ -1842,30 +1916,30 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
    * {@inheritdoc}
    */
   public function massageFormValues(array $values, array $form, FormStateInterface $form_state) {
-    // Log input values for debugging
+    // Log input values for debugging.
     \Drupal::logger('media_attributes_manager')->debug('massageFormValues input: @values', [
-      '@values' => json_encode($values, JSON_PRETTY_PRINT)
+      '@values' => json_encode($values, JSON_PRETTY_PRINT),
     ]);
 
-    // Get the field definition to check allowed target bundles
+    // Get the field definition to check allowed target bundles.
     $field_definition = $this->fieldDefinition;
     $handler_settings = $field_definition->getSetting('handler_settings');
     $allowed_bundles = $handler_settings['target_bundles'] ?? [];
 
     \Drupal::logger('media_attributes_manager')->debug('Allowed bundles: @bundles', [
-      '@bundles' => implode(', ', $allowed_bundles)
+      '@bundles' => implode(', ', $allowed_bundles),
     ]);
 
-    // If no target bundles are specified, allow all - delegate to parent
+    // If no target bundles are specified, allow all - delegate to parent.
     if (empty($allowed_bundles)) {
       $result = parent::massageFormValues($values, $form, $form_state);
       \Drupal::logger('media_attributes_manager')->debug('No target bundles restriction, returning: @result', [
-        '@result' => json_encode($result, JSON_PRETTY_PRINT)
+        '@result' => json_encode($result, JSON_PRETTY_PRINT),
       ]);
       return $result;
     }
 
-    // Extract the media IDs from the parent format: 'media:123 media:456 media:789'
+    // Extract the media IDs from the parent format: 'media:123 media:456 media:789'.
     $media_ids = [];
     if (!empty($values['target_id'])) {
       $entities = explode(' ', trim($values['target_id']));
@@ -1878,10 +1952,10 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     }
 
     \Drupal::logger('media_attributes_manager')->debug('Extracted media IDs: @ids', [
-      '@ids' => implode(', ', $media_ids)
+      '@ids' => implode(', ', $media_ids),
     ]);
 
-    // Filter media IDs based on allowed bundles
+    // Filter media IDs based on allowed bundles.
     $entity_type_manager = \Drupal::entityTypeManager();
     $allowed_media_ids = [];
     $filtered_count = 0;
@@ -1891,25 +1965,27 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $media = $entity_type_manager->getStorage('media')->load($media_id);
 
         if ($media && in_array($media->bundle(), $allowed_bundles)) {
-          // Media type is allowed, keep it
+          // Media type is allowed, keep it.
           $allowed_media_ids[] = $media_id;
           \Drupal::logger('media_attributes_manager')->debug('Keeping media ID @id (@type)', [
             '@id' => $media_id,
-            '@type' => $media->bundle()
+            '@type' => $media->bundle(),
           ]);
-        } else {
-          // Media type is not allowed, filter it out
+        }
+        else {
+          // Media type is not allowed, filter it out.
           $filtered_count++;
 
-          // Log the filtered media for debugging
+          // Log the filtered media for debugging.
           \Drupal::logger('media_attributes_manager')->info('Filtered out media ID @id with type @type (not in allowed types: @allowed)', [
             '@id' => $media_id,
             '@type' => $media ? $media->bundle() : 'unknown',
             '@allowed' => implode(', ', $allowed_bundles),
           ]);
         }
-      } catch (\Exception $e) {
-        // If we can't load the media, filter it out
+      }
+      catch (\Exception $e) {
+        // If we can't load the media, filter it out.
         $filtered_count++;
         \Drupal::logger('media_attributes_manager')->warning('Could not load media ID @id, filtering out: @error', [
           '@id' => $media_id,
@@ -1918,7 +1994,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Show message if any media were filtered
+    // Show message if any media were filtered.
     if ($filtered_count > 0) {
       $message = \Drupal::translation()->formatPlural(
         $filtered_count,
@@ -1927,7 +2003,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       );
       \Drupal::messenger()->addWarning($message);
 
-      // Also show which types are allowed
+      // Also show which types are allowed.
       $media_type_storage = $entity_type_manager->getStorage('media_type');
       $allowed_type_labels = [];
       foreach ($allowed_bundles as $bundle) {
@@ -1944,7 +2020,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Reconstruct the target_id string in the format expected by the parent widget
+    // Reconstruct the target_id string in the format expected by the parent widget.
     $filtered_target_id = '';
     if (!empty($allowed_media_ids)) {
       $formatted_ids = array_map(function ($id) {
@@ -1953,19 +2029,19 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       $filtered_target_id = implode(' ', $formatted_ids);
     }
 
-    // Create the filtered values array in the format expected by the parent
+    // Create the filtered values array in the format expected by the parent.
     $filtered_values = ['target_id' => $filtered_target_id];
 
     \Drupal::logger('media_attributes_manager')->debug('Before parent::massageFormValues - filtered target_id: @target_id (count: @count)', [
       '@target_id' => $filtered_target_id,
-      '@count' => count($allowed_media_ids)
+      '@count' => count($allowed_media_ids),
     ]);
 
     $result = parent::massageFormValues($filtered_values, $form, $form_state);
 
     \Drupal::logger('media_attributes_manager')->debug('After parent::massageFormValues - result: @result (count: @count)', [
       '@result' => json_encode($result, JSON_PRETTY_PRINT),
-      '@count' => count($result)
+      '@count' => count($result),
     ]);
 
     return $result;
@@ -1980,7 +2056,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
     $triggering_element = $form_state->getTriggeringElement();
     $user_input = $form_state->getUserInput();
 
-    // Utiliser le trait pour identifier le champ
+    // Utiliser le trait pour identifier le champ.
     $field_name = static::getFieldNameFromTrigger($triggering_element);
     if (empty($field_name)) {
       \Drupal::logger('media_attributes_manager')->error('Cannot identify field name for sorting');
@@ -1992,27 +2068,29 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     // Récupérer les paramètres de tri
     // 1. Récupérer le chemin du conteneur parent (sort_controls)
-    $container_parents = array_slice($triggering_element['#parents'], 0, -1); // Retire "sort_button"
+    // Retire "sort_button".
+    $container_parents = array_slice($triggering_element['#parents'], 0, -1);
 
     $sort_by = NestedArray::getValue($user_input, [...$container_parents, 'sort_by']) ?? 'exif_date';
     $sort_order = NestedArray::getValue($user_input, [...$container_parents, 'sort_order']) ?? 'asc';
     // 2. Récupérer les valeurs des selects
     \Drupal::logger('media_attributes_manager')->notice('Sorting media by @sort_by in @order order', [
       '@sort_by' => $sort_by,
-      '@order' => $sort_order
+      '@order' => $sort_order,
     ]);
 
-    // Identifier les médias sélectionnés - même logique que bulkRemoveSelected
+    // Identifier les médias sélectionnés - même logique que bulkRemoveSelected.
     $selected_media_ids = [];
     if (isset($form[$field_name]['widget']['current']['items'])) {
       foreach (Element::children($form[$field_name]['widget']['current']['items']) as $delta) {
         $item = $form[$field_name]['widget']['current']['items'][$delta];
 
-        // Vérifier si la checkbox est cochée
+        // Vérifier si la checkbox est cochée.
         $checked = FALSE;
         if (isset($item['buttons']['select_checkbox']['#value']) && $item['buttons']['select_checkbox']['#value'] == 1) {
           $checked = TRUE;
-        } elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
+        }
+        elseif (!empty($user_input[$field_name]['widget']['current']['items'][$delta]['buttons']['select_checkbox'])) {
           $checked = TRUE;
         }
 
@@ -2027,13 +2105,14 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     if ($sort_selected_only) {
       \Drupal::logger('media_attributes_manager')->notice('Sorting only selected media: @ids', [
-        '@ids' => implode(', ', $selected_media_ids)
+        '@ids' => implode(', ', $selected_media_ids),
       ]);
-    } else {
+    }
+    else {
       \Drupal::logger('media_attributes_manager')->notice('No media selected, sorting all media');
     }
 
-    // Récupérer l'entité et mettre à jour directement - même pattern que bulkRemoveSelected
+    // Récupérer l'entité et mettre à jour directement - même pattern que bulkRemoveSelected.
     $form_object = $form_state->getFormObject();
     $entity = NULL;
     if ($form_object && method_exists($form_object, 'getEntity')) {
@@ -2045,7 +2124,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       return;
     }
 
-    // Obtenir les valeurs actuelles du champ
+    // Obtenir les valeurs actuelles du champ.
     $field_items = $entity->get($field_name);
     $current_values = $field_items->getValue();
 
@@ -2054,7 +2133,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       return;
     }
 
-    // Charger les entités média pour le tri
+    // Charger les entités média pour le tri.
     $media_items = [];
     $non_sorted_items = [];
 
@@ -2063,10 +2142,11 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $media = \Drupal::entityTypeManager()->getStorage('media')->load($value['target_id']);
         if ($media) {
           if ($sort_selected_only && !in_array($value['target_id'], $selected_media_ids)) {
-            // Garder cet item à sa position actuelle
+            // Garder cet item à sa position actuelle.
             $non_sorted_items[$delta] = $value;
-          } else {
-            // Ajouter à la liste des items à trier
+          }
+          else {
+            // Ajouter à la liste des items à trier.
             $sort_value = static::getSortValue($media, $sort_by);
             $media_items[$delta] = [
               'value' => $value,
@@ -2081,7 +2161,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
               '@name' => $media->label(),
               '@type' => $media->bundle(),
               '@sort_by' => $sort_by,
-              '@value' => is_string($sort_value) ? $sort_value : ($sort_value ? date('Y-m-d H:i:s', $sort_value) : 'NULL')
+              '@value' => is_string($sort_value) ? $sort_value : ($sort_value ? date('Y-m-d H:i:s', $sort_value) : 'NULL'),
             ]);
           }
         }
@@ -2095,85 +2175,89 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
     \Drupal::logger('media_attributes_manager')->notice('Sorting @count media items', ['@count' => count($media_items)]);
 
-    // Trier les médias sélectionnés
+    // Trier les médias sélectionnés.
     usort($media_items, function ($a, $b) use ($sort_order) {
       $result = 0;
 
-      // Gérer les valeurs nulles
-      if ($a['sort_value'] === null && $b['sort_value'] === null) {
+      // Gérer les valeurs nulles.
+      if ($a['sort_value'] === NULL && $b['sort_value'] === NULL) {
         return 0;
       }
-      if ($a['sort_value'] === null) {
+      if ($a['sort_value'] === NULL) {
         return 1;
       }
-      if ($b['sort_value'] === null) {
+      if ($b['sort_value'] === NULL) {
         return -1;
       }
 
-      // Comparer les valeurs
+      // Comparer les valeurs.
       if (is_string($a['sort_value']) && is_string($b['sort_value'])) {
         $result = strcasecmp($a['sort_value'], $b['sort_value']);
-      } else {
+      }
+      else {
         $result = $a['sort_value'] <=> $b['sort_value'];
       }
 
       return $sort_order === 'desc' ? -$result : $result;
     });
 
-    // Reconstruire les valeurs du champ dans le bon ordre - même pattern que bulkRemoveSelected
+    // Reconstruire les valeurs du champ dans le bon ordre - même pattern que bulkRemoveSelected.
     $new_values = [];
     $sorted_entity_ids = [];
 
     if ($sort_selected_only) {
-      // Créer une carte complète de tous les items avec leur position d'origine
+      // Créer une carte complète de tous les items avec leur position d'origine.
       $all_items_map = [];
 
-      // Ajouter les items non triés avec leur delta d'origine
+      // Ajouter les items non triés avec leur delta d'origine.
       foreach ($non_sorted_items as $delta => $value) {
         $all_items_map[$delta] = $value;
       }
 
-      // Ajouter les items triés avec leur delta d'origine
+      // Ajouter les items triés avec leur delta d'origine.
       foreach ($media_items as $item_data) {
         $all_items_map[$item_data['delta']] = $item_data['value'];
       }
 
-      // Trier par delta pour maintenir l'ordre, puis remplacer les éléments triés
+      // Trier par delta pour maintenir l'ordre, puis remplacer les éléments triés.
       ksort($all_items_map);
 
       $sorted_index = 0;
       foreach ($all_items_map as $delta => $value) {
         if (isset($media_items[$delta])) {
-          // Remplacer par l'item trié correspondant
+          // Remplacer par l'item trié correspondant.
           if ($sorted_index < count($media_items)) {
             $new_values[] = $media_items[$sorted_index]['value'];
             $sorted_entity_ids[] = 'media:' . $media_items[$sorted_index]['value']['target_id'];
             $sorted_index++;
           }
-        } else {
-          // Garder l'item non trié à sa position
+        }
+        else {
+          // Garder l'item non trié à sa position.
           $new_values[] = $value;
           $sorted_entity_ids[] = 'media:' . $value['target_id'];
         }
       }
-    } else {
-      // Tout trier
+    }
+    else {
+      // Tout trier.
       foreach ($media_items as $media_item) {
         $new_values[] = $media_item['value'];
         $sorted_entity_ids[] = 'media:' . $media_item['value']['target_id'];
       }
     }
 
-    // Utiliser le trait pour mettre à jour le widget avec les nouvelles valeurs triées
-    $storage_data = ['media_sorted' => true];
+    // Utiliser le trait pour mettre à jour le widget avec les nouvelles valeurs triées.
+    $storage_data = ['media_sorted' => TRUE];
     $success = static::updateFieldAndUserInput($form_state, $field_name, $new_values, 'sort', $storage_data);
 
     if ($success) {
       static::showOperationMessage('sort', count($media_items));
       \Drupal::logger('media_attributes_manager')->notice('Sort complete. New order: @order', [
-        '@order' => implode(' ', $sorted_entity_ids)
+        '@order' => implode(' ', $sorted_entity_ids),
       ]);
-    } else {
+    }
+    else {
       \Drupal::messenger()->addError('Failed to update field during sorting.');
     }
   }
@@ -2187,24 +2271,24 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       '@media_id' => $media->id(),
       '@name' => $media->label(),
       '@type' => $media->bundle(),
-      '@sort_by' => $sort_by
+      '@sort_by' => $sort_by,
     ]);
 
     switch ($sort_by) {
       case 'exif_date':
-        // Essayer d'abord le champ EXIF date
+        // Essayer d'abord le champ EXIF date.
         if ($media->hasField('field_exif_datetime')) {
           $value = $media->get('field_exif_datetime')->value;
           if (!empty($value)) {
             \Drupal::logger('media_attributes_manager')->debug('Using EXIF datetime for media @id: @value', [
               '@id' => $media->id(),
-              '@value' => $value
+              '@value' => $value,
             ]);
             return strtotime($value);
           }
         }
 
-        // Fallback sur la date de création du fichier
+        // Fallback sur la date de création du fichier.
         $file_field = static::getMediaFileField($media);
         if ($file_field && !$media->get($file_field)->isEmpty()) {
           $file = $media->get($file_field)->entity;
@@ -2212,17 +2296,17 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $file_time = $file->getCreatedTime();
             \Drupal::logger('media_attributes_manager')->debug('Using file created time for media @id: @value', [
               '@id' => $media->id(),
-              '@value' => date('Y-m-d H:i:s', $file_time)
+              '@value' => date('Y-m-d H:i:s', $file_time),
             ]);
             return $file_time;
           }
         }
 
-        // Derniers fallback sur la date de création du média
+        // Derniers fallback sur la date de création du média.
         $default_value = $media->getCreatedTime();
         \Drupal::logger('media_attributes_manager')->debug('Using media created time for media @id: @value', [
           '@id' => $media->id(),
-          '@value' => date('Y-m-d H:i:s', $default_value)
+          '@value' => date('Y-m-d H:i:s', $default_value),
         ]);
         return $default_value;
 
@@ -2234,7 +2318,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $file_time = $file->getCreatedTime();
             \Drupal::logger('media_attributes_manager')->debug('Using file date for media @id: @value', [
               '@id' => $media->id(),
-              '@value' => date('Y-m-d H:i:s', $file_time)
+              '@value' => date('Y-m-d H:i:s', $file_time),
             ]);
             return $file_time;
           }
@@ -2242,7 +2326,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $default_value = $media->getCreatedTime();
         \Drupal::logger('media_attributes_manager')->debug('Using media created time for media @id: @value', [
           '@id' => $media->id(),
-          '@value' => date('Y-m-d H:i:s', $default_value)
+          '@value' => date('Y-m-d H:i:s', $default_value),
         ]);
         return $default_value;
 
@@ -2254,15 +2338,16 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
             $filename = $file->getFilename();
             \Drupal::logger('media_attributes_manager')->debug('Using filename for media @id: @filename', [
               '@id' => $media->id(),
-              '@filename' => $filename
+              '@filename' => $filename,
             ]);
-            return strtolower($filename); // Normaliser pour un tri insensible à la casse
+            // Normaliser pour un tri insensible à la casse.
+            return strtolower($filename);
           }
         }
         $label = $media->label();
         \Drupal::logger('media_attributes_manager')->debug('Using media label for media @id: @label', [
           '@id' => $media->id(),
-          '@label' => $label
+          '@label' => $label,
         ]);
         return strtolower($label);
 
@@ -2270,7 +2355,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
         $default_value = $media->getCreatedTime();
         \Drupal::logger('media_attributes_manager')->debug('Using default created time for media @id: @value', [
           '@id' => $media->id(),
-          '@value' => date('Y-m-d H:i:s', $default_value)
+          '@value' => date('Y-m-d H:i:s', $default_value),
         ]);
         return $default_value;
     }
@@ -2280,7 +2365,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
    * Trouve le champ fichier principal d'un média.
    */
   protected static function getMediaFileField($media) {
-    // Essayer d'abord les champs les plus communs
+    // Essayer d'abord les champs les plus communs.
     $common_fields = ['field_media_file', 'field_media_image', 'field_media_video_file'];
 
     foreach ($common_fields as $field_name) {
@@ -2289,7 +2374,7 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    // Fallback: chercher tout champ de type file ou image
+    // Fallback: chercher tout champ de type file ou image.
     foreach ($media->getFieldDefinitions() as $field_name => $definition) {
       if (
         in_array($definition->getType(), ['file', 'image']) &&
@@ -2300,6 +2385,84 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
       }
     }
 
-    return null;
+    return NULL;
   }
+
+  /**
+   * Callback AJAX pour la rotation d'image.
+   *
+   * @param array $form
+   *   Le formulaire complet.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   L'état du formulaire.
+   *
+   * @return array
+   *   Le widget mis à jour.
+   */
+  public static function rotateImageCallback(array &$form, FormStateInterface $form_state) {
+    $triggering_element = $form_state->getTriggeringElement();
+
+    if (!isset($triggering_element['#attributes']['data-media-id'])) {
+      \Drupal::logger('media_attributes_manager')->error('Media ID not found in rotate button');
+      return new AjaxResponse();
+    }
+
+    $media_id = $triggering_element['#attributes']['data-media-id'];
+    $details_id = $triggering_element['#attributes']['data-wrapper-id'] ?? '';
+
+    // Utilise le service de rotation pour effectuer la rotation.
+    $rotation_service = \Drupal::service('media_attributes_manager.media_rotation');
+    $result = $rotation_service->rotateImage($media_id);
+
+    if (!$result['success']) {
+      \Drupal::logger('media_attributes_manager')->error('Error rotating image: @message', [
+        '@message' => $result['message'] ?? 'Unknown error',
+      ]);
+    }
+
+    // Trouver le champ concerné par la rotation.
+    $field_name = '';
+    if (isset($triggering_element['#array_parents'])) {
+      foreach ($triggering_element['#array_parents'] as $parent) {
+        if (strpos($parent, 'field_') === 0) {
+          $field_name = $parent;
+          break;
+        }
+      }
+    }
+
+    // Récupérer le media entity mis à jour.
+    $media = \Drupal::entityTypeManager()->getStorage('media')->load($media_id);
+    if ($media) {
+      // Vider le cache des images pour forcer la génération des nouvelles vignettes.
+      \Drupal::service('cache_tags.invalidator')->invalidateTags([
+        'media:' . $media_id,
+        'rendered',
+        'image_styles',
+      ]);
+    }
+
+    // Faire un rebuild du formulaire pour recalculer toutes les vignettes.
+    $form_state->setRebuild(TRUE);
+
+    // Retourner une commande AJAX pour mettre à jour le widget avec les nouvelles vignettes.
+    $response = new AjaxResponse();
+    $parents = $triggering_element['#array_parents'];
+    // rotate_button.
+    array_pop($parents);
+    // Buttons.
+    array_pop($parents);
+
+    // On récupère le conteneur de preview.
+    $parents[] = 'display';
+    $parents[] = '#datas';
+    $preview_render = NestedArray::getValue($form, $parents);
+    if (!empty($field_name) && isset($form[$field_name])) {
+      $widget_html = \Drupal::service('renderer')->render($form[$field_name]['widget']);
+      $response->addCommand(new ReplaceCommand('#media-item-' . $media_id, $preview_render));
+    }
+
+    return $response;
+  }
+
 }

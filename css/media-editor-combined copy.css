@@ -102,11 +102,11 @@
 .field-checkbox-field-group {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: center; /* Better vertical alignment of checkbox with field */
   margin-bottom: 0px;
   width: 100%;
-  max-width: 500px;
-  margin-top: 0px;
+  max-width: 500px; /* Slightly wider for better readability */
+  margin-top: 0px; /* Remove top margin for better alignment */
   justify-items: start;
 }
 
@@ -120,7 +120,7 @@
   flex-shrink: 0;
   padding-right: 4px;
   box-sizing: border-box;
-  padding-top: 3px;
+  padding-top: 3px; /* Ajuster pour aligner avec les champs de saisie */
 }
 
 /* Container pour le champ principal */
@@ -129,7 +129,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 0; /* Permet le text-overflow */
 }
 
 /* Div du champ principal */
@@ -186,6 +186,15 @@ input.taxonomy-term-id {
   text-overflow: ellipsis;
 }
 
+/* Style spécifique pour les checkboxes et leurs labels */
+.media-attributes-bulk-edit-form input[type="checkbox"] {
+  vertical-align: middle;
+  width: auto;
+  cursor: pointer;
+  width: 2em;
+  height: 2em;
+}
+
 /* Mode responsive */
 @media screen and (max-width: 767px) {
   .field-checkbox-field-group {
@@ -207,7 +216,7 @@ input.taxonomy-term-id {
   flex: 0 0 40px;
   display: flex;
   align-items: flex-start;
-  padding-top: 3px;
+  padding-top: 3px; /* Aligner avec les champs de saisie */
   padding-right: 5px;
   margin-right: 5px;
 }
@@ -222,7 +231,42 @@ input.taxonomy-term-id {
 /* Style du champ principal */
 .field-main, .field-main-container {
   flex: 1;
-  min-width: 0;
+  min-width: 0; /* Pour éviter le dépassement */
+}
+
+/* Styles pour les champs à l'intérieur des détails */
+details .field-checkbox {
+  display: inline-block;
+  vertical-align: top;
+  width: 60px;
+  margin-right: 10px;
+}
+
+details .field-main,
+details .taxonomy-field-container,
+details .field-container {
+  display: inline-block;
+  vertical-align: top;
+  width: calc(100% - 80px);
+}
+
+/* Réorganiser l'ordre des éléments HTML pour positionner les checkboxes à gauche */
+details .claro-details__wrapper {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+details .claro-details__wrapper > .field-checkbox {
+  order: 1;
+  margin-right: 10px;
+}
+
+/* S'assurer que le conteneur a un positionnement relatif */
+.claro-details__wrapper {
+  position: relative !important;
+  display: block !important;
+  padding-top: 0 !important; /* Réduire l'espace au-dessus */
+  padding-bottom: 5px !important; /* Réduire l'espace en-dessous */
 }
 
 /* Style des labels des checkbox pour les rendre plus petits et compacts */
@@ -235,7 +279,7 @@ input.taxonomy-term-id {
 /* Aligner et centrer le contenu des checkboxes */
 .field-checkbox-wrapper .field-checkbox .form-item {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-start; /* Aligner en haut pour mieux positionner avec le texte */
   justify-content: center;
   margin: 0;
   text-align: center;
@@ -244,6 +288,21 @@ input.taxonomy-term-id {
 /* Espacement correct entre la checkbox et son label */
 .field-checkbox-wrapper .field-checkbox input {
   margin-right: 4px;
+}
+
+/* Réduire la taille des checkboxes elles-mêmes */
+.media-attributes-bulk-edit-form .field-checkbox input[type="checkbox"] {
+  transform: scale(0.85) translateX(2.5em) translateY(0.2em);
+  margin: 0;
+  vertical-align: middle;
+  display: inline-block !important;
+  width: 2em;
+  height: 2em;
+}
+
+/* Style spécifique pour les checkbox autocomplete qui ont une structure différente */
+.media-attributes-bulk-edit-form .claro-autocomplete {
+  width: 100% !important;
 }
 
 /* Gestion des margins pour éviter les collisions */
@@ -255,6 +314,13 @@ input.taxonomy-term-id {
 .media-attributes-bulk-edit-form textarea {
   min-height: 40px;
   max-height: 80px;
+}
+
+/* Style pour les boutons d'action */
+.media-attributes-bulk-edit-form .form-actions {
+  margin-top: 0.8em;
+  padding-top: 0.8em;
+  border-top: 1px solid #e0e0e0;
 }
 
 /* Les boutons sont plus compacts */
@@ -291,6 +357,13 @@ input.taxonomy-term-id {
   padding-right: 20px;
   background-position: 99% center;
   background-size: 16px;
+}
+
+/* Assurer que les checkbox sont bien alignées verticalement */
+.field-checkbox-container input[type="checkbox"] {
+  vertical-align: middle;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 /* Assurer que tous les champs ont la même hauteur */
@@ -399,6 +472,12 @@ input.taxonomy-term-id {
   margin-bottom: 0 !important;
 }
 
+.inline-form-item .field-checkbox {
+  margin-left: auto !important;
+  padding-left: 0.5em !important;
+  min-width: 60px !important;
+}
+
 /* Ajustements pour les terminaux mobiles */
 @media screen and (max-width: 768px) {
   .bulk-form-fields-grid {
@@ -483,7 +562,7 @@ input.taxonomy-term-id {
 
 /* Correction pour les checkboxes qui doivent être à gauche */
 .media-attributes-bulk-edit-form .field-checkbox {
-  margin-top: 0 !important;
+  margin-top: 0 !important; /* Ne plus décaler vers le bas */
   display: flex !important;
   align-items: center !important;
 }
@@ -612,7 +691,7 @@ input.taxonomy-term-id {
 .field-checkbox input[type="checkbox"] {
   margin-top: 0;
   position: relative;
-  top: -1px;
+  top: -1px; /* Ajustement fin pour l'alignement vertical */
 }
 
 /* Ajustement spécifique pour aligner avec les champs Select2 */
@@ -625,71 +704,4 @@ input.taxonomy-term-id {
   display: flex;
   align-items: center;
   margin-top: 0;
-}
-
-/*
- * SECTION 3: Styles spécifiques pour les éléments Media Library
- */
-
-/* Styles pour les items de la media library */
-.media-library-item__content {
-  display: flex;
-  width: 100%;
-  align-items: center;
-}
-
-/* La checkbox des médias */
-.media-library-item__content input[type="checkbox"] {
-  margin: 0;
-}
-
-/* Boutons à droite qui prennent l'espace restant */
-.media-library-item__buttons {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
-
-/* Style des boutons de la media library */
-.media-library-item__buttons a {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  text-decoration: none;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #333;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-
-.media-library-item__buttons a:hover {
-  background: #e0e0e0;
-}
-
-/* Pour gérer les écrans petits */
-@media (max-width: 768px) {
-  .media-library-item__content {
-    flex-wrap: wrap;
-  }
-
-  .media-library-item__buttons {
-    margin-left: 0;
-    margin-top: 8px;
-    justify-content: flex-start;
-    width: 100%;
-  }
-}
-
-.media-library-item__rotate {
-    font-size: 1.2rem;
-    right: 3.8rem;
-    position: relative;
-    padding: .2rem;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: 0.75rem;
-    text-align: center;
 }

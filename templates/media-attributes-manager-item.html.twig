@@ -46,7 +46,8 @@
          data-media-alt="{{ datas.media_alt }}"
          data-media-thumbnail-width="{{ datas.media_thumbnail_width }}"
          data-media-thumbnail-height="{{ datas.media_thumbnail_height }}"
-         data-media-video-url="{{ datas.media_video_url }}">
+         data-media-video-url="{{ datas.media_video_url }}"
+         id="media-item-{{ datas.media_id }}">
       {# Affichage du titre et de l'ID du média #}
       {# Affichage du média #}
       {% if datas.media_base_type == 'image' and (datas.media_thumbnail_url or datas.media_url) %}

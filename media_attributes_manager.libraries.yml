@@ -151,3 +151,11 @@ bulk_edit_select2:
     - select2/select2
     - core/jquery.ui
     - core/drupal.dialog
+
+media_image_rotation:
+  js:
+    js/media-image-rotation.js: {}
+  dependencies:
+    - core/drupal
+    - core/jquery
+    - core/once
