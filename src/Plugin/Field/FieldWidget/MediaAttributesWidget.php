@@ -622,9 +622,9 @@ class MediaAttributesWidget extends EntityReferenceBrowserWidget {
 
         // Complète $datas.
         $datas['media_video_url'] = $video_url ?? '';
-        $datas['media_thumbnail_url'] = $thumbnail_url;
-        $datas['media_thumbnail_alt'] = $thumbnail_alt;
-        $datas['media_thumbnail_title'] = $thumbnail_title;
+        $datas['media_thumbnail_url'] = $thumbnail_url ?? '';
+        $datas['media_thumbnail_alt'] = $thumbnail_alt ?? '';
+        $datas['media_thumbnail_title'] = $thumbnail_title ?? '';
         $datas['media_thumbnail_width'] = $data['width'] ?? $width;
         $datas['media_thumbnail_height'] = $data['height'] ?? $height;
 
